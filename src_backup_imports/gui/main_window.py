@@ -1,0 +1,950 @@
+#!/usr/bin/env python3
+"""
+OT Asset Manager - Main Application Window
+Professional Industrial Asset Management Interface
+"""
+import sys
+import os
+import ipaddress
+from datetime import datetime
+
+# ---- Import path setup (MUST BE FIRST, before local imports) ----
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+# ---- PyQt6 Imports ----
+from PyQt6.QtWidgets import (
+    QMainWindow, QApplication, QVBoxLayout, QHBoxLayout, QWidget,
+    QMenuBar, QToolBar, QStatusBar, QTabWidget, QDockWidget,
+    QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel, QPushButton,
+    QTableWidget, QTableWidgetItem, QSplitter, QGroupBox,
+    QProgressBar, QComboBox, QLineEdit, QSpinBox, QCheckBox,
+    QMessageBox, QFileDialog, QPlainTextEdit
+)
+from PyQt6.QtCore import QThread, QObject, pyqtSignal, Qt, QTimer
+from PyQt6.QtGui import QIcon, QFont, QPalette, QColor, QAction
+
+# ---- Local Imports (AFTER path setup) ----
+from gui.live_dashboard import LiveDashboardWidget
+
+
+
+
+
+# ---- Import Scanner ----
+try:
+    from src.scanner.network_scanner import EnterpriseNetworkScanner
+    SCANNER_AVAILABLE = True
+except Exception as e:
+    print(f"Warning: Scanner not available - {e}")
+    SCANNER_AVAILABLE = False
+    EnterpriseNetworkScanner = None
+
+# ---- Import Network Graph (Optional) ----
+try:
+    from network_graph import NetworkGraphWidget
+    NETWORK_GRAPH_AVAILABLE = True
+except Exception as e:
+    NetworkGraphWidget = None
+    NETWORK_GRAPH_AVAILABLE = False
+    print(f"Warning: NetworkGraphWidget unavailable - {e}")
+
+# ---- Import Protocol Analysis Tab (Optional) ----
+try:
+    from protocol_analysis_tab import ProtocolAnalysisTab
+    PROTOCOL_TAB_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import ProtocolAnalysisTab: {e}")
+    PROTOCOL_TAB_AVAILABLE = False
+    ProtocolAnalysisTab = None
+
+
+
+    # Dummy scanner for demo mode
+    class EnterpriseNetworkScanner:
+        is_scanning = False
+
+        def __init__(self, max_workers=50):
+            pass
+
+        def scan_multiple_subnets(self, subnets):
+            return []
+
+
+# ---- ScanWorker class (ONLY ONE DEFINITION) ----
+class ScanWorker(QObject):
+    """Worker for background network scanning"""
+    finished = pyqtSignal(list)
+    progress = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, scanner, subnets):
+        super().__init__()
+        self.scanner = scanner
+        self.subnets = subnets
+
+    def run(self):
+        """Execute scan with error handling"""
+        try:
+            self.progress.emit(f"🔍 Scanning {len(self.subnets)} subnet(s)...")
+            devices = self.scanner.scan_multiple_subnets(self.subnets)
+
+            if not devices:
+                self.progress.emit("⚠️ No devices found")
+            else:
+                self.progress.emit(f"✅ Found {len(devices)} device(s)")
+
+            self.finished.emit(devices)
+
+        except Exception as e:
+            import traceback
+            error_details = f"{str(e)}\n\n{traceback.format_exc()}"
+            self.error.emit(error_details)
+
+
+class MainWindow(QMainWindow):
+    """Main Application Window for OT Asset Manager"""
+
+    def __init__(self):
+        super(MainWindow, self).__init__()
+        self.setWindowTitle("OT Asset Manager v1.0 - Industrial Asset Discovery & Management")
+        self.setGeometry(100, 100, 1400, 900)
+
+        # Initialize components
+        self.setup_scanner()
+        self.setup_styling()
+        self.setup_menubar()
+        self.setup_toolbar()
+        self.setup_statusbar()
+        self.setup_dock_panels()
+        self.setup_central_widget()
+        self.setup_timers()
+
+        self.log("✅ Main window initialized successfully")
+        if not SCANNER_AVAILABLE:
+            self.log("⚠️ Network scanner not available - running in demo mode")
+
+    # ---------- Logging ----------
+
+    def log(self, message: str) -> None:
+        """Safe logger"""
+        ts = datetime.now().strftime("%H:%M:%S")
+        lt = getattr(self, "logs_text", None)
+        try:
+            if lt is not None:
+                lt.append(f"[{ts}] {message}")
+                cursor = lt.textCursor()
+                cursor.movePosition(cursor.MoveOperation.End)
+                lt.setTextCursor(cursor)
+            else:
+                print(f"[{ts}] {message}")
+        except Exception:
+            print(f"[{ts}] {message}")
+
+    # ---------- Setup ----------
+
+    def setup_scanner(self):
+        """Initialize the network scanner"""
+        self.scanner = None
+        if SCANNER_AVAILABLE:
+            try:
+                self.scanner = EnterpriseNetworkScanner()
+            except Exception as e:
+                print(f"Failed to create scanner: {e}")
+
+    def setup_styling(self):
+        """Set up the application styling"""
+        self.setStyleSheet("""
+            QMainWindow { background-color: #2b2b2b; color: #ffffff; }
+            QMenuBar { background-color: #3c3c3c; color: #ffffff; border-bottom: 1px solid #555; }
+            QMenuBar::item { padding: 8px 12px; }
+            QMenuBar::item:selected { background-color: #0078d4; }
+            QMenu { background-color: #3c3c3c; color: #ffffff; border: 1px solid #555; }
+            QMenu::item:selected { background-color: #0078d4; }
+            QToolBar { background-color: #404040; border: 1px solid #555; padding: 5px; }
+            QPushButton { 
+                background-color: #0078d4; color: white; border: none; 
+                padding: 8px 16px; border-radius: 4px; font-weight: bold; 
+            }
+            QPushButton:hover { background-color: #106ebe; }
+            QPushButton:pressed { background-color: #005a9e; }
+            QPushButton:disabled { background-color: #555; color: #999; }
+            QTabWidget::pane { border: 1px solid #555; background-color: #2b2b2b; }
+            QTabBar::tab { background-color: #404040; color: #ffffff; padding: 10px 20px; }
+            QTabBar::tab:selected { background-color: #0078d4; }
+            QDockWidget { background-color: #353535; color: #ffffff; border: 1px solid #555; }
+            QDockWidget::title { background-color: #404040; padding: 8px; font-weight: bold; }
+            QTreeWidget, QTableWidget { 
+                background-color: #353535; color: #ffffff; border: 1px solid #555; 
+                alternate-background-color: #404040; 
+            }
+            QTreeWidget::item:selected, QTableWidget::item:selected { background-color: #0078d4; }
+            QTextEdit { 
+                background-color: #1e1e1e; color: #ffffff; border: 1px solid #555; 
+                font-family: 'Consolas', monospace; 
+            }
+            QStatusBar { background-color: #404040; color: #ffffff; border-top: 1px solid #555; }
+            QGroupBox { 
+                border: 2px solid #555; border-radius: 5px; margin-top: 1ex; font-weight: bold; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; subcontrol-position: top center; 
+                padding: 0 5px; color: #0078d4; 
+            }
+            QLineEdit, QSpinBox, QComboBox { 
+                background-color: #404040; color: #ffffff; border: 1px solid #555; 
+                padding: 5px; border-radius: 3px; 
+            }
+            QProgressBar { border: 1px solid #555; border-radius: 3px; text-align: center; }
+            QProgressBar::chunk { background-color: #0078d4; border-radius: 2px; }
+        """)
+
+    def setup_menubar(self):
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu('&File')
+        new_project = QAction('&New Project', self)
+        new_project.setShortcut('Ctrl+N')
+        new_project.triggered.connect(self.new_project)
+
+        open_project = QAction('&Open Project', self)
+        open_project.setShortcut('Ctrl+O')
+        open_project.triggered.connect(self.open_project)
+
+        export_data = QAction('&Export Results…', self)
+        export_data.triggered.connect(lambda: self.export_results('csv'))
+
+        exit_action = QAction('E&xit', self)
+        exit_action.setShortcut('Ctrl+Q')
+        exit_action.triggered.connect(self.close)
+
+        file_menu.addActions([new_project, open_project])
+        file_menu.addSeparator()
+        file_menu.addAction(export_data)
+        file_menu.addSeparator()
+        file_menu.addAction(exit_action)
+
+
+        # Help menu
+        help_menu = menubar.addMenu('&Help')
+        about_action = QAction('&About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+    def setup_toolbar(self):
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+
+        scan_action = QAction('🔍 Scan Network', self)
+        scan_action.triggered.connect(self.show_scan_tab)
+
+        report_action = QAction('📋 Report', self)
+        report_action.triggered.connect(self.generate_report)
+
+        toolbar.addAction(scan_action)
+        toolbar.addSeparator()
+        toolbar.addAction(report_action)
+
+        self.addToolBar(toolbar)
+
+    def setup_statusbar(self):
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+
+        self.status_label = QLabel("Ready")
+        self.status_bar.addWidget(self.status_label)
+
+        self.network_status = QLabel("Network: Ready")
+        self.network_status.setStyleSheet("color: #51cf66;")
+        self.status_bar.addPermanentWidget(self.network_status)
+
+        self.asset_count = QLabel("Assets: 0")
+        self.status_bar.addPermanentWidget(self.asset_count)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+
+    def setup_dock_panels(self):
+        # Assets dock (left)
+        self.assets_dock = QDockWidget("Assets", self)
+        assets_widget = QWidget()
+        assets_layout = QVBoxLayout(assets_widget)
+
+        self.assets_tree = QTreeWidget()
+        self.assets_tree.setHeaderLabels(["Device", "Type", "IP Address", "Status"])
+        assets_layout.addWidget(self.assets_tree)
+
+        self.assets_dock.setWidget(assets_widget)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.assets_dock)
+
+        # Logs dock (bottom)
+        self.logs_dock = QDockWidget("System Logs", self)
+        self.logs_text = QTextEdit()
+        self.logs_text.setReadOnly(True)
+        self.logs_text.setMaximumHeight(200)
+        self.logs_dock.setWidget(self.logs_text)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.logs_dock)
+
+    def setup_central_widget(self):
+        """Setup the central widget with tabs"""
+
+        # ===== CREATE SINGLE TAB WIDGET =====
+        self.central_tabs = QTabWidget()
+        self.setCentralWidget(self.central_tabs)
+
+        # Tab configuration
+        self.central_tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self.central_tabs.setMovable(True)
+        self.central_tabs.setDocumentMode(True)
+        self.monitor_tab = LiveDashboardWidget()
+        self.central_tabs.addTab(self.monitor_tab, "🔍 Network Monitor")
+
+        # Tab styling
+        self.central_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+                background-color: #1E1E1E;
+            }
+            QTabBar::tab {
+                background-color: #2D2D2D;
+                color: #CCCCCC;
+                padding: 10px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: #1E1E1E;
+                color: #FFFFFF;
+                border-bottom: 2px solid #2196F3;
+            }
+            QTabBar::tab:hover {
+                background-color: #3D3D3D;
+            }
+        """)
+
+        # ===== ADD ALL TABS TO CENTRAL_TABS =====
+
+        # 1. Dashboard Tab
+        try:
+            self.dashboard_tab = self.create_dashboard_tab()
+            self.central_tabs.addTab(self.dashboard_tab, "🏠 Dashboard")
+            print("✅ Dashboard tab created")
+        except Exception as e:
+            print(f"❌ Error creating Dashboard tab: {e}")
+
+        # 2. Network Scanner Tab
+        try:
+            self.scanner_tab = self.create_scanner_tab()
+            self.central_tabs.addTab(self.scanner_tab, "🔍 Network Scanner")
+            print("✅ Network Scanner tab created")
+        except Exception as e:
+            print(f"❌ Error creating Scanner tab: {e}")
+
+        # 3. Network Discovery Tab
+        try:
+            network_discovery_tab = self.create_network_discovery_tab()
+            self.central_tabs.addTab(network_discovery_tab, "🌐 Network Discovery")
+            print("✅ Network Discovery tab created")
+        except Exception as e:
+            print(f"❌ Error creating Network Discovery tab: {e}")
+
+        # 4. Protocol Analysis Tab ⭐
+        if PROTOCOL_TAB_AVAILABLE and ProtocolAnalysisTab:
+            try:
+                self.protocol_tab = ProtocolAnalysisTab(self)
+                self.central_tabs.addTab(self.protocol_tab, "📡 Protocol Analysis")
+                print("✅ Protocol Analysis tab created successfully!")
+            except Exception as e:
+                print(f"❌ Error creating Protocol Analysis tab: {e}")
+                # Create error placeholder
+                placeholder = QWidget()
+                layout = QVBoxLayout(placeholder)
+                error_label = QLabel(f"Protocol Analysis Error:\n{str(e)}")
+                error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                error_label.setStyleSheet("color: #FF5722; font-size: 14px; padding: 20px;")
+                layout.addWidget(error_label)
+                self.central_tabs.addTab(placeholder, "⚠️ Protocol Analysis")
+        else:
+            print("⚠️ Protocol Analysis tab disabled - import failed")
+            print(f"   PROTOCOL_TAB_AVAILABLE = {PROTOCOL_TAB_AVAILABLE}")
+            print(f"   ProtocolAnalysisTab = {ProtocolAnalysisTab}")
+            # Create placeholder for missing module
+            placeholder = QWidget()
+            layout = QVBoxLayout(placeholder)
+            error_label = QLabel(
+                "Protocol Analysis Module Not Available\n\nPlease check:\n• protocol_analysis_tab.py exists\n• No import errors in console")
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            error_label.setStyleSheet("color: #FFA726; font-size: 14px; padding: 20px;")
+            layout.addWidget(error_label)
+            self.central_tabs.addTab(placeholder, "📡 Protocol Analysis")
+
+        # 5. Asset Inventory Tab
+        try:
+            self.inventory_tab = self.create_inventory_tab()
+            self.central_tabs.addTab(self.inventory_tab, "📦 Asset Inventory")
+            print("✅ Asset Inventory tab created")
+        except Exception as e:
+            print(f"❌ Error creating Inventory tab: {e}")
+
+        # 6. Security Tab
+        try:
+            self.security_tab = self.create_security_tab()
+            self.central_tabs.addTab(self.security_tab, "🔒 Security")
+            print("✅ Security tab created")
+        except Exception as e:
+            print(f"❌ Error creating Security tab: {e}")
+
+        # 7. Visualization Tab
+        try:
+            visualization_tab = self.create_visualization_tab()
+            self.central_tabs.addTab(visualization_tab, "📊 Visualization")
+            print("✅ Visualization tab created")
+        except Exception as e:
+            print(f"❌ Error creating Visualization tab: {e}")
+
+        # 8. Reports Tab
+        try:
+            self.reports_tab = self.create_reports_tab()
+            self.central_tabs.addTab(self.reports_tab, "📊 Reports")
+            print("✅ Reports tab created")
+        except Exception as e:
+            print(f"❌ Error creating Reports tab: {e}")
+
+        print(f"\n📋 Total tabs created: {self.central_tabs.count()}")
+
+    def setup_timers(self):
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_status)
+        self.update_timer.start(5000)
+
+    # ---------- Tab Creation ----------
+
+    def create_network_discovery_tab(self):
+        """Create the network discovery/scanning interface"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        """Create the network discovery/scanning interface"""
+        # ... existing code ...
+
+        # Add after Export button
+        sync_btn = QPushButton("🔄 Sync to Assets & Graph")
+        sync_btn.clicked.connect(self.manual_sync_devices)
+        sync_btn.setStyleSheet("""  
+                QPushButton {  
+                    background-color: #9b59b6;  
+                    color: white;  
+                    padding: 8px 15px;  
+                    border-radius: 4px;  
+                }  
+                QPushButton:hover {  
+                    background-color: #8e44ad;  
+                }  
+            """)
+        layout.addWidget(sync_btn)
+        # Title
+        title = QLabel("🌐 Enterprise Network Discovery")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Subnet input
+        subnet_group = QGroupBox("Subnets to Scan")
+        subnet_layout = QVBoxLayout()
+
+        subnet_help = QLabel("Enter subnets in CIDR notation (one per line):\nExample: 192.168.1.0/24")
+        subnet_help.setStyleSheet("color: #95a5a6; font-size: 11px;")
+        subnet_layout.addWidget(subnet_help)
+
+        self.subnet_input = QPlainTextEdit()
+        self.subnet_input.setPlaceholderText("10.10.100.0/24\n192.168.12.0/24\n192.168.1.0/24")
+        self.subnet_input.setMaximumHeight(120)
+        subnet_layout.addWidget(self.subnet_input)
+
+        subnet_group.setLayout(subnet_layout)
+        layout.addWidget(subnet_group)
+
+        # Scan options
+        options_group = QGroupBox("Scan Options")
+        options_layout = QHBoxLayout()
+
+        options_layout.addWidget(QLabel("Max Workers:"))
+        self.max_workers = QSpinBox()
+        self.max_workers.setRange(1, 200)
+        self.max_workers.setValue(50)
+        options_layout.addWidget(self.max_workers)
+        options_layout.addStretch()
+
+        options_group.setLayout(options_layout)
+        layout.addWidget(options_group)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        self.scan_button = QPushButton("🚀 Start Scan")
+        self.scan_button.clicked.connect(self.start_enterprise_scan)
+        button_layout.addWidget(self.scan_button)
+
+        self.stop_button = QPushButton("⏹ Stop Scan")
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_enterprise_scan)
+        button_layout.addWidget(self.stop_button)
+
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Progress bar
+        self.scan_progress = QProgressBar()
+        self.scan_progress.setVisible(False)
+        layout.addWidget(self.scan_progress)
+
+        # Scan log
+        log_group = QGroupBox("Scan Log")
+        log_layout = QVBoxLayout()
+
+        self.scan_log = QTextEdit()
+        self.scan_log.setReadOnly(True)
+        self.scan_log.setMaximumHeight(200)
+        log_layout.addWidget(self.scan_log)
+
+        log_group.setLayout(log_layout)
+        layout.addWidget(log_group)
+
+        # Results table
+        results_group = QGroupBox("Discovered Devices")
+        results_layout = QVBoxLayout()
+
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(6)
+        self.results_table.setHorizontalHeaderLabels([
+            "IP Address", "Hostname", "MAC Address", "Vendor", "Device Type", "Status"
+        ])
+        self.results_table.horizontalHeader().setStretchLastSection(True)
+        results_layout.addWidget(self.results_table)
+
+        export_btn = QPushButton("📊 Export Results")
+        export_btn.clicked.connect(self.export_scan_results)
+        results_layout.addWidget(export_btn)
+
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
+
+        return tab
+
+    def get_discovered_devices(self):
+        """Return list of discovered devices for protocol analysis"""
+        devices = []
+
+        for row in range(self.results_table.rowCount()):
+            device = {
+                'ip_address': self.results_table.item(row, 0).text() if self.results_table.item(row, 0) else '',
+                'hostname': self.results_table.item(row, 1).text() if self.results_table.item(row, 1) else '',
+                'mac': self.results_table.item(row, 2).text() if self.results_table.item(row, 2) else '',
+                'vendor': self.results_table.item(row, 3).text() if self.results_table.item(row, 3) else '',
+                'device_type': self.results_table.item(row, 4).text() if self.results_table.item(row, 4) else '',
+                'status': self.results_table.item(row, 5).text() if self.results_table.item(row, 5) else 'online',
+                'open_ports': []  # Will be populated from stored data
+            }
+
+            # Get open ports from stored device data
+            if hasattr(self, 'device_data'):
+                stored_device = next((d for d in self.device_data if d.get('ip_address') == device['ip_address']), None)
+                if stored_device:
+                    device['open_ports'] = stored_device.get('open_ports', [])
+
+            devices.append(device)
+
+        return devices
+
+    def create_visualization_tab(self):
+        """Create visualization tab"""
+        viz_widget = QWidget()
+        layout = QVBoxLayout(viz_widget)
+
+        if NetworkGraphWidget:
+            try:
+                self.network_graph = NetworkGraphWidget()
+                layout.addWidget(self.network_graph)
+                self.log("✅ Network visualization ready")
+            except Exception as e:
+                self.log(f"⚠️ Network graph failed: {e}")
+                self.network_graph = None
+                label = QLabel(f"📊 Network Visualization\n\nGraph unavailable: {e}")
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(label)
+        else:
+            label = QLabel("📊 Network Visualization\n\nGraph module not available")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+
+        return viz_widget
+
+    # ---------- Scanning Methods ----------
+
+    def start_enterprise_scan(self):
+        """Start multi-subnet network scan"""
+        # Validate input
+        subnet_text = self.subnet_input.toPlainText().strip()
+        if not subnet_text:
+            QMessageBox.warning(self, "No Subnets", "Please enter at least one subnet to scan")
+            return
+
+        subnets = [line.strip() for line in subnet_text.split('\n') if line.strip()]
+
+        # Validate CIDR notation
+        valid_subnets = []
+        for subnet in subnets:
+            try:
+                ipaddress.ip_network(subnet, strict=False)
+                valid_subnets.append(subnet)
+            except ValueError:
+                self.log(f"⚠️ Invalid subnet: {subnet}")
+
+        if not valid_subnets:
+            QMessageBox.warning(self, "Invalid Subnets",
+                                "No valid subnets!\n\nUse CIDR notation: 192.168.1.0/24")
+            return
+
+        self.log(f"🚀 Starting scan of {len(valid_subnets)} subnets...")
+
+        # Check scanner availability
+        if not SCANNER_AVAILABLE:
+            self.log("❌ Scanner not available")
+            QMessageBox.critical(self, "Scanner Error", "Network scanner module not available")
+            return
+
+        # Initialize scanner
+        try:
+            scanner = EnterpriseNetworkScanner(max_workers=self.max_workers.value())
+            self.log("✅ Scanner initialized")
+        except Exception as e:
+            self.log(f"❌ Scanner init failed: {e}")
+            QMessageBox.critical(self, "Scanner Error", f"Failed to initialize scanner:\n{e}")
+            return
+
+        # Show progress
+        self.scan_progress.setVisible(True)
+        self.scan_progress.setRange(0, 0)  # Indeterminate
+        self.scan_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+        # Run scan in background thread
+        self.scan_thread = QThread()
+        self.scan_worker = ScanWorker(scanner, valid_subnets)
+        self.scan_worker.moveToThread(self.scan_thread)
+
+        self.scan_thread.started.connect(self.scan_worker.run)
+        self.scan_worker.finished.connect(self.on_scan_complete)
+        self.scan_worker.progress.connect(self.log)
+        self.scan_worker.error.connect(self.on_scan_error)
+
+        self.scan_thread.start()
+
+    def stop_enterprise_scan(self):
+        """Stop running scan"""
+        if hasattr(self, 'scan_thread') and self.scan_thread.isRunning():
+            self.log("⏹ Stopping scan...")
+            self.scan_thread.quit()
+            self.scan_thread.wait()
+            self.log("✅ Scan stopped")
+
+        self.scan_progress.setVisible(False)
+        self.scan_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+
+    def on_scan_complete(self, devices: list):
+        """Handle scan completion - sync to all views"""
+        self.log(f"✅ Scan complete! Found {len(devices)} devices")
+
+        # Update results table
+        self.results_table.setRowCount(0)
+
+        for device in devices:
+            row = self.results_table.rowCount()
+            self.results_table.insertRow(row)
+
+            # Add to results table
+            self.results_table.setItem(row, 0, QTableWidgetItem(device.get('ip_address', '')))
+            self.results_table.setItem(row, 1, QTableWidgetItem(device.get('hostname', '')))
+            self.results_table.setItem(row, 2, QTableWidgetItem(device.get('mac', '')))
+            self.results_table.setItem(row, 3, QTableWidgetItem(device.get('vendor', 'Unknown')))
+            self.results_table.setItem(row, 4, QTableWidgetItem(device.get('device_type', 'unknown')))
+            self.results_table.setItem(row, 5, QTableWidgetItem(device.get('status', 'online')))
+
+            # ✅ ADD TO ASSETS TREE
+            self.add_device_to_assets(device)
+
+            # ✅ ADD TO NETWORK GRAPH
+            if hasattr(self, 'network_graph') and self.network_graph:
+                self.network_graph.add_device(device)
+
+        # Update asset count in status bar
+        self.asset_count.setText(f"Assets: {self.results_table.rowCount()}")
+
+        # Reset UI
+        self.scan_progress.setVisible(False)
+        self.scan_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+
+        # Cleanup thread
+        if hasattr(self, 'scan_thread'):
+            self.scan_thread.quit()
+            self.scan_thread.wait()
+
+        # Log success
+        self.log(f"📊 Added {len(devices)} devices to Assets")
+        self.log(f"🌐 Added {len(devices)} devices to Visualization")
+
+        QMessageBox.information(
+            self,
+            "Scan Complete",
+            f"✅ Found {len(devices)} devices!\n\n"
+            f"• Added to Results Table\n"
+            f"• Added to Assets Panel\n"
+            f"• Added to Network Visualization"
+        )
+
+    def add_device_to_assets(self, device: dict):
+        """Add a discovered device to the Assets tree panel"""
+        ip = device.get('ip_address', '')
+        hostname = device.get('hostname', '') or ip
+        device_type = device.get('device_type', 'Unknown')
+        status = device.get('status', 'online')
+
+        # Check if device already exists
+        for i in range(self.assets_tree.topLevelItemCount()):
+            existing_item = self.assets_tree.topLevelItem(i)
+            if existing_item.text(2) == ip:  # IP is in column 2
+                # Update existing item
+                existing_item.setText(0, hostname)
+                existing_item.setText(1, device_type)
+                existing_item.setText(3, status)
+                return
+
+        # Create new tree item
+        item = QTreeWidgetItem([hostname, device_type, ip, status])
+
+        # Color code by status
+        if status.lower() == 'online':
+            item.setBackground(0, QColor(46, 125, 50, 100))  # Green
+        else:
+            item.setBackground(0, QColor(211, 47, 47, 100))  # Red
+
+        # Add to tree
+        self.assets_tree.addTopLevelItem(item)
+
+    def on_scan_error(self, error_msg: str):
+        """Handle scan errors"""
+        self.log(f"❌ Scan error: {error_msg}")
+
+        self.scan_progress.setVisible(False)
+        self.scan_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+
+        if hasattr(self, 'scan_thread'):
+            self.scan_thread.quit()
+            self.scan_thread.wait()
+
+        QMessageBox.critical(self, "Scan Error", f"Scan failed:\n\n{error_msg}")
+
+    def export_scan_results(self):
+        """Export scan results to CSV"""
+        if self.results_table.rowCount() == 0:
+            QMessageBox.warning(self, "No Data", "No scan results to export")
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Scan Results", "", "CSV Files (*.csv)"
+        )
+
+        if filename:
+            try:
+                import csv
+                with open(filename, 'w', newline='') as file:
+                    writer = csv.writer(file)
+
+                    # Headers
+                    headers = []
+                    for col in range(self.results_table.columnCount()):
+                        headers.append(self.results_table.horizontalHeaderItem(col).text())
+                    writer.writerow(headers)
+
+                    # Data
+                    for row in range(self.results_table.rowCount()):
+                        row_data = []
+                        for col in range(self.results_table.columnCount()):
+                            item = self.results_table.item(row, col)
+                            row_data.append(item.text() if item else '')
+                        writer.writerow(row_data)
+
+                self.log(f"✅ Exported to: {filename}")
+                QMessageBox.information(self, "Export Successful", f"Results exported to:\n{filename}")
+            except Exception as e:
+                self.log(f"❌ Export failed: {e}")
+                QMessageBox.critical(self, "Export Failed", f"Failed to export:\n{e}")
+
+    def send_to_visualization(self):
+        """Send discovered devices to network visualization"""
+        if not getattr(self, 'network_graph', None):
+            QMessageBox.warning(self, "Visualization Not Available",
+                                "Please enable the Visualization tab first")
+            return
+
+        device_count = 0
+        for row in range(self.results_table.rowCount()):
+            def _txt(c):
+                item = self.results_table.item(row, c)
+                return item.text() if item else ""
+
+            device_data = {
+                'ip_address': _txt(0),
+                'hostname': _txt(1),
+                'vendor': _txt(3),
+                'device_type': "",  # table doesn’t store type column explicitly
+                'mac_address': _txt(2),
+                'services': [s.strip() for s in _txt(4).split(',')] if _txt(4) else [],
+                'status': _txt(7) or 'online'
+            }
+
+            if device_data['ip_address']:
+                self.network_graph.add_device(device_data)
+                device_count += 1
+
+        self.log(f"✅ Sent {device_count} devices to visualization")
+        QMessageBox.information(self, "Success",
+                                f"Added {device_count} devices to network visualization")
+
+    def sync_discovered_devices(self):
+        """Manually sync all discovered devices from the table to the graph"""
+        if not getattr(self, 'network_graph', None):
+            self.log("❌ Network graph not available")
+            return
+
+        device_count = 0
+        for row in range(self.results_table.rowCount()):
+            def _txt(c):
+                item = self.results_table.item(row, c)
+                return item.text() if item else ""
+
+            device_data = {
+                'ip_address': _txt(0),
+                'hostname': _txt(1) or 'Unknown',
+                'mac_address': _txt(2),
+                'vendor': _txt(3),
+                'services': [s.strip() for s in _txt(4).split(',')] if _txt(4) else [],
+                'response_time': float(_txt(5).replace('ms', '') or 0) if _txt(5) else 0.0,
+                'status': _txt(7) or 'online'
+            }
+            if device_data['ip_address']:
+                self.network_graph.add_device(device_data)
+                device_count += 1
+                self.log(f"🔄 Synced device: {device_data['ip_address']}")
+
+        self.graph_status.setText(f"Graph Status: {len(self.network_graph.nodes)} nodes")
+        self.log(f"✅ Synced {device_count} devices to graph")
+
+    def create_security_tab(self):
+        security_widget = QWidget()
+        layout = QVBoxLayout(security_widget)
+        security_label = QLabel("🔒 Security Assessment\n\nSecurity analysis results will be displayed here.")
+        security_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        security_label.setStyleSheet("font-size: 14px; padding: 50px;")
+        layout.addWidget(security_label)
+        self.central_tabs.addTab(security_widget, "🔒 Security")
+
+    def create_protocol_analysis_tab(self):
+        protocol_widget = QWidget()
+        layout = QVBoxLayout(protocol_widget)
+        info_label = QLabel("📡 Protocol Analysis\n\nProtocol detection and analysis features will be displayed here.")
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setStyleSheet("font-size: 14px; padding: 50px;")
+        layout.addWidget(info_label)
+        self.central_tabs.addTab(protocol_widget, "📡 Protocol Analysis")
+
+    def manual_sync_devices(self):
+        """Manually sync all devices from results table to Assets and Graph"""
+        if self.results_table.rowCount() == 0:
+            QMessageBox.warning(self, "No Devices", "No devices in results table to sync")
+            return
+
+        self.log("🔄 Manually syncing devices...")
+
+        synced_count = 0
+        for row in range(self.results_table.rowCount()):
+            device = {
+                'ip_address': self.results_table.item(row, 0).text() if self.results_table.item(row, 0) else '',
+                'hostname': self.results_table.item(row, 1).text() if self.results_table.item(row, 1) else '',
+                'mac': self.results_table.item(row, 2).text() if self.results_table.item(row, 2) else '',
+                'vendor': self.results_table.item(row, 3).text() if self.results_table.item(row, 3) else 'Unknown',
+                'device_type': self.results_table.item(row, 4).text() if self.results_table.item(row, 4) else 'unknown',
+                'status': self.results_table.item(row, 5).text() if self.results_table.item(row, 5) else 'online'
+            }
+
+            if device['ip_address']:
+                # Add to assets
+                self.add_device_to_assets(device)
+
+                # Add to graph
+                if hasattr(self, 'network_graph') and self.network_graph:
+                    self.network_graph.add_device(device)
+
+                synced_count += 1
+
+        self.asset_count.setText(f"Assets: {self.assets_tree.topLevelItemCount()}")
+        self.log(f"✅ Synced {synced_count} devices to Assets and Visualization")
+
+        QMessageBox.information(
+            self,
+            "Sync Complete",
+            f"Successfully synced {synced_count} devices to:\n\n"
+            f"• Assets Panel: {self.assets_tree.topLevelItemCount()} items\n"
+            f"• Network Graph: Updated"
+        )
+
+    def export_results(self, format_type: str):
+        """Export results (wrapper)"""
+        self.export_scan_results()
+
+    # ---------- Menu Actions ----------
+
+    def new_project(self):
+        self.log("New project created")
+
+    def open_project(self):
+        self.log("Opening project...")
+
+    def generate_report(self):
+        self.log("Generating report...")
+
+    def show_about(self):
+        QMessageBox.about(
+            self,
+            "About OT Asset Manager",
+            "OT Asset Manager v1.0\n\n"
+            "Industrial Asset Discovery & Management System\n"
+            "Built with PyQt6 and Python\n\n"
+            "© 2024 Industrial Security Solutions"
+        )
+
+    def show_scan_tab(self):
+        """Switch to network discovery tab"""
+        self.central_tabs.setCurrentIndex(0)
+
+    def update_status(self):
+        """Periodic status update"""
+        pass
+
+
+
+    # ---- Entry Point ----
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setApplicationName("OT Asset Manager")
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+

@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OT/ICS Security Assessment Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 4px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        .summary {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .device {
+            border: 1px solid #bdc3c7;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .critical {
+            background: #e74c3c;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .high {
+            background: #e67e22;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .medium {
+            background: #f39c12;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .online {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .offline {
+            color: #95a5a6;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #3498db;
+            color: white;
+        }
+        .ot-protocol {
+            background: #9b59b6;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            display: inline-block;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏭 OT/ICS Security Assessment Report</h1>
+        <p><strong>Generated:</strong> 2025-10-25 11:03:23</p>
+        <p><strong>Network:</strong> 192.168.12.0/24</p>
+        <p><strong>Scanner:</strong> Enterprise OT Network Scanner v1.0</p>
+        
+        <div class="summary">
+            <h2>📊 Executive Summary</h2>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                </tr>
+                <tr>
+                    <td>Devices Scanned</td>
+                    <td>5</td>
+                </tr>
+                <tr>
+                    <td>Online Devices</td>
+                    <td>4</td>
+                </tr>
+                <tr>
+                    <td>OT/ICS Devices Found</td>
+                    <td>1</td>
+                </tr>
+                <tr>
+                    <td>Critical Vulnerabilities</td>
+                    <td style="color: red; font-weight: bold;">
+                        1
+                    </td>
+                </tr>
+                <tr>
+                    <td>High Vulnerabilities</td>
+                    <td style="color: orange; font-weight: bold;">
+                        2
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+        <h2>🔍 Detailed Findings</h2>
+
+        <div class="device">
+            <h3>🖥️ 192.168.12.228</h3>
+            <p><strong>IP:</strong> 192.168.12.228</p>
+            <p><strong>Status:</strong> <span class="online">ONLINE</span></p>
+            <p><strong>MAC:</strong> 00:1d:9c:a6:67:52</p>
+            <p><strong>Vendor:</strong> Rockwell Automation</p>
+    <p><strong>OT/ICS Protocols:</strong><br><span class="ot-protocol">🏭 EtherNet/IP (Port 44818)</span></p><p><strong>Open Ports:</strong></p><table><tr><th>Port</th><th>Service</th><th>Protocol</th></tr><tr><td>80</td><td>HTTP</td><td>tcp</td></tr><tr><td>44818</td><td>EtherNet/IP</td><td>tcp</td></tr></table><p><strong>⚠️ Vulnerabilities:</strong></p><ul><li>
+                <span class="critical">CRITICAL</span> 
+                EtherNet/IP exposed without authentication<br>
+                <em>Recommendation: Implement firewall rules and authentication</em>
+            </li></ul></div>
+        <div class="device">
+            <h3>🖥️ VPN01.lan</h3>
+            <p><strong>IP:</strong> 192.168.12.161</p>
+            <p><strong>Status:</strong> <span class="offline">OFFLINE</span></p>
+            <p><strong>MAC:</strong> 00:1c:7f:97:5b:a2</p>
+            <p><strong>Vendor:</strong> Check Point Software</p>
+    </div>
+        <div class="device">
+            <h3>🖥️ 192.168.12.162</h3>
+            <p><strong>IP:</strong> 192.168.12.162</p>
+            <p><strong>Status:</strong> <span class="online">ONLINE</span></p>
+            <p><strong>MAC:</strong> 88:90:8d:59:10:c0</p>
+            <p><strong>Vendor:</strong> Siemens</p>
+    <p><strong>Open Ports:</strong></p><table><tr><th>Port</th><th>Service</th><th>Protocol</th></tr><tr><td>22</td><td>SSH</td><td>tcp</td></tr><tr><td>23</td><td>Telnet</td><td>tcp</td></tr><tr><td>80</td><td>HTTP</td><td>tcp</td></tr><tr><td>443</td><td>HTTPS</td><td>tcp</td></tr></table><p><strong>⚠️ Vulnerabilities:</strong></p><ul><li>
+                <span class="high">HIGH</span> 
+                Telnet service detected - unencrypted protocol<br>
+                <em>Recommendation: Disable Telnet and use SSH instead</em>
+            </li></ul></div>
+        <div class="device">
+            <h3>🖥️ C892-Router.lan</h3>
+            <p><strong>IP:</strong> 192.168.12.174</p>
+            <p><strong>Status:</strong> <span class="online">ONLINE</span></p>
+            <p><strong>MAC:</strong> a4:53:0e:b0:c5:b2</p>
+            <p><strong>Vendor:</strong> Cisco</p>
+    </div>
+        <div class="device">
+            <h3>🖥️ Research01.scepces.com</h3>
+            <p><strong>IP:</strong> 192.168.12.190</p>
+            <p><strong>Status:</strong> <span class="online">ONLINE</span></p>
+            <p><strong>MAC:</strong> Unknown</p>
+            <p><strong>Vendor:</strong> Unknown</p>
+    <p><strong>Open Ports:</strong></p><table><tr><th>Port</th><th>Service</th><th>Protocol</th></tr><tr><td>80</td><td>HTTP</td><td>tcp</td></tr><tr><td>445</td><td>SMB</td><td>tcp</td></tr><tr><td>3389</td><td>RDP</td><td>tcp</td></tr><tr><td>8080</td><td>HTTP-Alt</td><td>tcp</td></tr></table><p><strong>⚠️ Vulnerabilities:</strong></p><ul><li>
+                <span class="high">HIGH</span> 
+                SMB service exposed - potential for EternalBlue<br>
+                <em>Recommendation: Apply MS17-010 patch and restrict SMB access</em>
+            </li></ul></div>
+        <h2>🛡️ Recommendations</h2>
+        <ol>
+            <li><strong>Immediate:</strong> Implement firewall rules to restrict access to EtherNet/IP (port 44818)</li>
+            <li><strong>Immediate:</strong> Disable Telnet on Siemens device, use SSH only</li>
+            <li><strong>High Priority:</strong> Apply MS17-010 patch to Windows server</li>
+            <li><strong>High Priority:</strong> Implement network segmentation (IT vs OT networks)</li>
+            <li><strong>Medium Priority:</strong> Enable authentication on all OT protocols</li>
+        </ol>
+    </div>
+</body>
+</html>

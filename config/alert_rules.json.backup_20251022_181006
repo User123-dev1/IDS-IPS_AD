@@ -1,0 +1,117 @@
+﻿{
+  "version": "1.0",
+  "enabled": true,
+  "whitelist": {
+    "ips": [],
+    "ports": []
+  },
+  "rules": [
+    {
+      "id": "rule_001",
+      "name": "Industrial Protocol Detection",
+      "description": "Detects traffic on common industrial protocol ports (Modbus, DNP3, etc.)",
+      "enabled": true,
+      "severity": "HIGH",
+      "category": "INDUSTRIAL_PROTOCOL",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": [502, 20000, 2404, 47808]
+      }
+    },
+    {
+      "id": "rule_002",
+      "name": "Suspicious Port Scan",
+      "description": "Detects potential port scanning activity",
+      "enabled": true,
+      "severity": "CRITICAL",
+      "category": "PORT_SCAN",
+      "conditions": {
+        "type": "connection_rate",
+        "operator": "greater_than",
+        "value": 20,
+        "timeframe": 60
+      }
+    },
+    {
+      "id": "rule_003",
+      "name": "High Packet Rate",
+      "description": "Detects abnormally high packet rates that could indicate flooding",
+      "enabled": true,
+      "severity": "HIGH",
+      "category": "TRAFFIC_ANOMALY",
+      "conditions": {
+        "type": "packet_rate",
+        "operator": "greater_than",
+        "value": 1000,
+        "timeframe": 60
+      }
+    },
+    {
+      "id": "rule_004",
+      "name": "OPC UA Protocol",
+      "description": "Detects OPC UA industrial protocol traffic",
+      "enabled": true,
+      "severity": "MEDIUM",
+      "category": "INDUSTRIAL_PROTOCOL",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": [4840]
+      }
+    },
+    {
+      "id": "rule_005",
+      "name": "Siemens S7 Protocol",
+      "description": "Detects Siemens S7 PLC communication",
+      "enabled": true,
+      "severity": "MEDIUM",
+      "category": "INDUSTRIAL_PROTOCOL",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": [102]
+      }
+    },
+    {
+      "id": "rule_006",
+      "name": "EtherNet/IP Protocol",
+      "description": "Detects EtherNet/IP industrial protocol",
+      "enabled": true,
+      "severity": "MEDIUM",
+      "category": "INDUSTRIAL_PROTOCOL",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": [44818, 2222]
+      }
+    },
+    {
+      "id": "rule_007",
+      "name": "BACnet Protocol",
+      "description": "Detects BACnet building automation protocol",
+      "enabled": true,
+      "severity": "MEDIUM",
+      "category": "BUILDING_AUTOMATION",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": [47808]
+      }
+    },
+    {
+      "id": "rule_008",
+      "name": "Excessive DNS Queries",
+      "description": "Detects potential DNS tunneling or data exfiltration via DNS",
+      "enabled": true,
+      "severity": "HIGH",
+      "category": "DNS_ANOMALY",
+      "conditions": {
+        "type": "dns_queries",
+        "operator": "greater_than",
+        "value": 50,
+        "timeframe": 60
+      }
+    }
+  ]
+}

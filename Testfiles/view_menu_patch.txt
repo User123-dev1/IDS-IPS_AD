@@ -1,0 +1,37 @@
+# This code should be added to the setup_menubar() method in MainWindow class
+# Insert AFTER the file_menu setup and BEFORE help_menu
+
+# Add this around line 250-280 in main_window.py:
+
+        # ==========================================
+        # VIEW MENU - Reports & Visualizations
+        # ==========================================
+        view_menu = menubar.addMenu('&View')
+        
+        # View Reports submenu
+        reports_submenu = view_menu.addMenu('?? Reports')
+        
+        # Vulnerability Report
+        vuln_report_action = QAction('?? Vulnerability Assessment', self)
+        vuln_report_action.setShortcut('Ctrl+R')
+        vuln_report_action.triggered.connect(self.open_vulnerability_report)
+        reports_submenu.addAction(vuln_report_action)
+        
+        # Compliance Report
+        compliance_report_action = QAction('?? Compliance Report', self)
+        compliance_report_action.triggered.connect(self.open_compliance_report)
+        reports_submenu.addAction(compliance_report_action)
+        
+        # Asset Summary
+        asset_report_action = QAction('?? Asset Summary', self)
+        asset_report_action.triggered.connect(self.open_asset_report)
+        reports_submenu.addAction(asset_report_action)
+        
+        view_menu.addSeparator()
+        
+        # View options
+        refresh_action = QAction('?? Refresh All', self)
+        refresh_action.setShortcut('F5')
+        refresh_action.triggered.connect(self.refresh_all_data)
+        view_menu.addAction(refresh_action)
+

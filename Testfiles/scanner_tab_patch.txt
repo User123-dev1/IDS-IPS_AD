@@ -1,0 +1,27 @@
+# Find this section in main_window.py (around line where scanner_tab is created):
+# 
+# OLD CODE:
+#     try:
+#         self.scanner_tab = self.create_scanner_tab()
+#         self.central_tabs.addTab(self.scanner_tab, " Network Scanner")
+#         print(" Network Scanner tab created")
+#     except Exception as e:
+#         print(f"[ERROR] Scanner tab failed: {e}")
+#
+# REPLACE WITH:
+
+try:
+    if NETWORK_SCANNER_AVAILABLE:
+        self.scanner_tab = NetworkScannerTab()
+        self.central_tabs.addTab(self.scanner_tab, "?? OT Security Scanner")
+        print("? OT Security Scanner tab created with vulnerability assessment")
+    else:
+        # Fallback to old scanner
+        self.scanner_tab = self.create_scanner_tab()
+        self.central_tabs.addTab(self.scanner_tab, " Network Scanner")
+        print(" Network Scanner tab created (legacy)")
+except Exception as e:
+    print(f"[ERROR] Scanner tab failed: {e}")
+    import traceback
+    traceback.print_exc()
+

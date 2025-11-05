@@ -1,0 +1,82 @@
+
+# Add these methods to MainWindow class (at the end, before if __name__ == "__main__")
+
+    def open_vulnerability_report(self):
+        """Open the latest vulnerability assessment report"""
+        try:
+            from pathlib import Path
+            import webbrowser
+            
+            reports_dir = Path("reports")
+            if not reports_dir.exists():
+                QMessageBox.warning(self, "No Reports", 
+                    "No reports directory found. Run a security scan first.")
+                return
+            
+            # Find latest report
+            reports = list(reports_dir.glob("OT_Security_Report_*.html"))
+            if not reports:
+                QMessageBox.warning(self, "No Reports", 
+                    "No vulnerability reports found. Run a security scan first.")
+                return
+            
+            latest_report = max(reports, key=lambda p: p.stat().st_mtime)
+            
+            # Open in browser
+            webbrowser.open(str(latest_report.absolute()))
+            self.log(f"?? Opened report: {latest_report.name}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open report: {e}")
+            print(f"[ERROR] Report opening failed: {e}")
+    
+    def open_compliance_report(self):
+        """Open compliance report (IEC 62443, NIST)"""
+        QMessageBox.information(self, "Compliance Report", 
+            "Compliance reporting coming soon!\n\nWill include:\n"
+            "• IEC 62443 compliance status\n"
+            "• NIST Cybersecurity Framework\n"
+            "• NERC CIP requirements")
+    
+    def open_asset_report(self):
+        """Open asset summary report"""
+        try:
+            # Generate quick asset summary from database
+            from database.db_manager import DatabaseManager
+            db = DatabaseManager()
+            
+            devices = db.execute_query("SELECT COUNT(*) as count FROM devices")[0]['count']
+            online = db.execute_query("SELECT COUNT(*) as count FROM devices WHERE status='online'")[0]['count']
+            
+            summary = f"""
+            <h2>Asset Summary</h2>
+            <p><b>Total Devices:</b> {devices}</p>
+            <p><b>Online Devices:</b> {online}</p>
+            <p><b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            """
+            
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Asset Summary")
+            msg.setTextFormat(Qt.TextFormat.RichText)
+            msg.setText(summary)
+            msg.exec()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to generate asset summary: {e}")
+    
+    def refresh_all_data(self):
+        """Refresh all tabs and data"""
+        self.log("?? Refreshing all data...")
+        try:
+            # Refresh each tab if it has a refresh method
+            if hasattr(self.monitor_tab, 'refresh'):
+                self.monitor_tab.refresh()
+            if hasattr(self.scanner_tab, 'update_statistics'):
+                self.scanner_tab.update_statistics()
+            if hasattr(self.ml_tab, 'refresh'):
+                self.ml_tab.refresh()
+            
+            self.log("? All data refreshed!")
+        except Exception as e:
+            self.log(f"? Refresh failed: {e}")
+

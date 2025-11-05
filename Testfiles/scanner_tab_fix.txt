@@ -1,0 +1,77 @@
+# Find this in main_window.py - the create_scanner_tab() method
+# Replace the scanner initialization with our working one
+
+def create_scanner_tab(self):
+    """Network Discovery & Scanning Tab - FIXED VERSION"""
+    scanner_widget = QWidget()
+    layout = QVBoxLayout()
+    
+    # Title
+    title = QLabel("Enterprise Network Discovery")
+    title.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+    layout.addWidget(title)
+    
+    # Subnet input
+    input_group = QGroupBox("Scan Configuration")
+    input_layout = QVBoxLayout()
+    
+    subnet_label = QLabel("Enter subnets in CIDR notation (one per line):\nExample: 192.168.1.0/24")
+    input_layout.addWidget(subnet_label)
+    
+    self.subnet_input = QTextEdit()
+    self.subnet_input.setPlaceholderText("192.168.12.0/24")
+    self.subnet_input.setMaximumHeight(100)
+    input_layout.addWidget(self.subnet_input)
+    
+    # Workers setting
+    workers_layout = QHBoxLayout()
+    workers_layout.addWidget(QLabel("Max Workers:"))
+    self.workers_spinbox = QSpinBox()
+    self.workers_spinbox.setRange(10, 200)
+    self.workers_spinbox.setValue(50)
+    workers_layout.addWidget(self.workers_spinbox)
+    workers_layout.addStretch()
+    input_layout.addLayout(workers_layout)
+    
+    input_group.setLayout(input_layout)
+    layout.addWidget(input_group)
+    
+    # Buttons
+    button_layout = QHBoxLayout()
+    self.scan_button = QPushButton("?? Start Scan")
+    self.scan_button.clicked.connect(self.start_network_scan_fixed)  # NEW METHOD
+    self.scan_button.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px;")
+    
+    self.stop_scan_button = QPushButton("?? Stop Scan")
+    self.stop_scan_button.setEnabled(False)
+    self.stop_scan_button.clicked.connect(self.stop_network_scan)
+    
+    button_layout.addWidget(self.scan_button)
+    button_layout.addWidget(self.stop_scan_button)
+    layout.addLayout(button_layout)
+    
+    # Progress
+    self.scan_progress = QProgressBar()
+    layout.addWidget(self.scan_progress)
+    
+    self.scan_status = QLabel("Ready to scan")
+    layout.addWidget(self.scan_status)
+    
+    # Results table
+    results_group = QGroupBox("Scan Results")
+    results_layout = QVBoxLayout()
+    
+    self.results_table = QTableWidget()
+    self.results_table.setColumnCount(5)
+    self.results_table.setHorizontalHeaderLabels([
+        "IP Address", "Hostname", "MAC Address", "Vendor", "Device Type"
+    ])
+    self.results_table.horizontalHeader().setStretchLastSection(True)
+    results_layout.addWidget(self.results_table)
+    
+    results_group.setLayout(results_layout)
+    layout.addWidget(results_group)
+    
+    scanner_widget.setLayout(layout)
+    return scanner_widget
+

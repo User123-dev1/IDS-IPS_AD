@@ -1,0 +1,197 @@
+import os
+import subprocess
+import time
+from contextlib import closing
+from socket import socket
+from sys import platform
+from typing import List, Dict, Optional
+import re
+from typing import List, Dict, Optional
+
+
+# ...
+
+class EnterpriseNetworkScanner:
+    # ... (your __init__ unchanged)
+
+    # -------------- NEW: low-cost probes --------------
+    def _tcp_alive_probe(self, ip: str, ports: list[int] = None, timeout: float = 0.6) -> bool:
+        if ports is None:
+            ports = [80, 443, 445, 22, 3389, 502]  # fast/common
+        for p in ports:
+            try:
+                with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+                    s.settimeout(timeout)
+                    if s.connect_ex((ip, p)) == 0:
+                        return True
+            except Exception:
+                continue
+        return False
+
+    def _arp_probe(self, ip: str) -> bool:
+        """
+        Try to populate ARP cache by sending a tiny UDP packet (no response needed),
+        then look for the MAC in ARP table. Works on local L2 only.
+        """
+        try:
+            # Send a tiny UDP packet to provoke ARP resolution
+            with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+                s.settimeout(0.2)
+                s.sendto(b'\x00', (ip, 1))  # high UDP port; OK if unreachable
+        except Exception:
+            pass
+
+        time.sleep(0.05)  # give ARP a breath
+
+        try:
+            if platform.system().lower() == 'windows':
+                out = subprocess.check_output(f'arp -a {ip}', shell=True, timeout=2)\
+                                .decode('utf-8', errors='ignore')
+                return re.search(r'([0-9A-Fa-f]{2}[-:]){5}[0-9A-Fa-f]{2}', out) is not None
+            else:
+                out = subprocess.check_output(f'arp -n {ip}', shell=True, timeout=2)\
+                                .decode('utf-8', errors='ignore')
+                return re.search(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', out) is not None
+        except Exception:
+            return False
+
+    # -------------- CHANGED: host alive --------------
+    def _is_host_alive(self, ip: str) -> bool:
+        """Consider host alive if ICMP OR TCP probe OR ARP hit succeeds."""
+        # ICMP
+        try:
+            param = '-n' if platform.system().lower() == 'windows' else '-c'
+            timeout_param = '-w' if platform.system().lower() == 'windows' else '-W'
+            cmd = ['ping', param, '1', timeout_param,
+                   '1000' if platform.system().lower() == 'windows' else '1', ip]
+            if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2).returncode == 0:
+                return True
+        except Exception:
+            pass
+
+        # TCP SYN to common ports
+        if self._tcp_alive_probe(ip, timeout=0.7):
+            return True
+
+        # ARP presence (local net)
+        if self._arp_probe(ip):
+            return True
+
+        return False
+
+    # -------------- CHANGED: port scan with retry --------------
+    def _scan_ports(self, ip: str, ports: List[int] = None) -> List[int]:
+        if ports is None:
+            ports = [21,22,23,25,53,80,88,102,110,139,143,179,389,443,445,502,631,
+                     1433,2222,2404,3306,3389,5432,5900,8080,8443,9100,9600,20000,44818,47808]
+
+        open_ports = []
+        for port in ports:
+            for attempt in (1, 2):  # one retry
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.9 if attempt == 1 else 1.2)
+                    if s.connect_ex((ip, port)) == 0:
+                        open_ports.append(port)
+                        s.close()
+                        break
+                    s.close()
+                except Exception:
+                    if attempt == 2:
+                        break
+                    else:
+                        continue
+        return open_ports
+
+        # Public wrapper
+
+    def get_vendor_from_mac(self, mac: str) -> str:
+        return self._get_vendor_from_mac(mac)
+
+        # Private implementation
+
+    def _get_vendor_from_mac(self, mac: str) -> str:
+        if not mac:
+            return "Unknown"
+        oui = mac.replace(':', '').replace('-', '').upper()[:6]
+        oui_database = {
+            # Cisco
+            '000142': 'Cisco', '00D0BC': 'Cisco', '001217': 'Cisco', '0090BF': 'Cisco',
+            # Rockwell/Allen-Bradley
+            '00008E': 'Rockwell Automation', '0030A3': 'Rockwell Automation',
+            # Siemens
+            '000E8C': 'Siemens', '00508B': 'Siemens', '7C2F80': 'Siemens',
+            # Schneider Electric
+            '0080F4': 'Schneider Electric', '00C0F2': 'Schneider Electric',
+            # Honeywell
+            '00A07E': 'Honeywell', '002582': 'Honeywell',
+            # ABB
+            '00306E': 'ABB', '00801F': 'ABB',
+            # GE/Emerson
+            '0050C2': 'GE', '00D0C9': 'Emerson',
+            # HP/Aruba
+            '001A4B': 'HP', '00266C': 'HP', '6C3BE5': 'Aruba',
+            # Xerox
+            '001048': 'Xerox', '080017': 'Xerox', '00093B': 'Xerox',
+            # Cameras
+            '001D7E': 'Hikvision', '547388': 'Hikvision', '446D6D': 'Dahua',
+            # T-Mobile/routers
+            '8C1F94': 'T-Mobile', '001DD6': 'T-Mobile',
+            # Common
+            '001B21': 'Intel', '00155D': 'Dell', '00502B': 'Raspberry Pi',
+            '001EC9': 'TP-Link', '2CF05D': 'Apple',
+        }
+        return oui_database.get(oui, "Unknown")
+
+import socket
+import struct
+import time
+
+def udp_and_name_probes(ip: str, timeout: float = 1.0) -> list:
+    """
+    Send quick UDP probes (common service ports) + NetBIOS name query and mDNS probe.
+    Returns list of ports/services that reacted (doesn't guarantee 'open' like TCP connect).
+    """
+    found = []
+    # list of UDP ports commonly used by devices
+    udp_ports = [161, 137, 5353, 1900]  # SNMP, NBNS, mDNS, SSDP
+
+    # Helper to send and wait for a UDP response
+    def udp_probe(p):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(timeout)
+                # For SNMP just send a small packet (invalid but elicits ICMP/UDP response)
+                if p == 161:
+                    s.sendto(b'\x30\x00', (ip, p))
+                elif p == 137:
+                    # NetBIOS Name Service: Name Query Request (simple)
+                    # Use a minimal NBNS query packet (transaction id + flags + qdcount)
+                    nbns = b'\x00\x00' + b'\x01\x00' + b'\x00\x00' + b'\x00\x00' + b'\x00\x00' + b'\x00\x00'
+                    s.sendto(nbns, (ip, p))
+                elif p == 5353:
+                    # mDNS: query for any record (simple, might not get reply)
+                    mdns = b'\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00'  # header + 1 question placeholder
+                    s.sendto(mdns, (ip, p))
+                else:
+                    s.sendto(b'\x00', (ip, p))
+
+                # Wait for any reply (ICMP port unreachable would raise)
+                try:
+                    data, addr = s.recvfrom(4096)
+                    return True
+                except socket.timeout:
+                    return False
+        except Exception:
+            return False
+
+    # Send UDP probes
+    for p in udp_ports:
+        if udp_probe(p):
+            # map to readable names
+            mapping = {161: "SNMP(161)", 137: "NBNS(137)", 5353: "mDNS(5353)", 1900: "SSDP(1900)"}
+            found.append(mapping.get(p, f"UDP-{p}"))
+
+    # If we got nothing, attempt a directed TCP SYN to commonly blocked ports with longer timeout
+    return found
+

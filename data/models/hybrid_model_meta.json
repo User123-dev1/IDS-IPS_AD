@@ -1,0 +1,8 @@
+{
+  "sequence_length": 10,
+  "contamination": 0.1,
+  "feature_dim": 10,
+  "use_lstm": true,
+  "is_trained": true,
+  "threshold": 0.5286057591438293
+}

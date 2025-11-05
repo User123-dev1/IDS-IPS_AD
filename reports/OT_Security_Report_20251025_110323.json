@@ -1,0 +1,148 @@
+[
+  {
+    "ip": "192.168.12.228",
+    "hostname": "192.168.12.228",
+    "mac_address": "00:1d:9c:a6:67:52",
+    "vendor": "Rockwell Automation",
+    "status": "online",
+    "open_ports": [
+      {
+        "port": 80,
+        "service": "HTTP",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 44818,
+        "service": "EtherNet/IP",
+        "protocol": "tcp",
+        "state": "open"
+      }
+    ],
+    "ot_protocols": [
+      {
+        "protocol": "EtherNet/IP",
+        "port": 44818,
+        "details": "EtherNet/IP service detected on port 44818",
+        "risk": "HIGH"
+      }
+    ],
+    "vulnerabilities": [
+      {
+        "severity": "critical",
+        "description": "EtherNet/IP exposed without authentication",
+        "recommendation": "Implement firewall rules and authentication",
+        "cve": "ICS-ALERT-EXPOSURE"
+      }
+    ],
+    "services": []
+  },
+  {
+    "ip": "192.168.12.161",
+    "hostname": "VPN01.lan",
+    "mac_address": "00:1c:7f:97:5b:a2",
+    "vendor": "Check Point Software",
+    "status": "offline",
+    "open_ports": [],
+    "ot_protocols": [],
+    "vulnerabilities": [],
+    "services": []
+  },
+  {
+    "ip": "192.168.12.162",
+    "hostname": "192.168.12.162",
+    "mac_address": "88:90:8d:59:10:c0",
+    "vendor": "Siemens",
+    "status": "online",
+    "open_ports": [
+      {
+        "port": 22,
+        "service": "SSH",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 23,
+        "service": "Telnet",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 80,
+        "service": "HTTP",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 443,
+        "service": "HTTPS",
+        "protocol": "tcp",
+        "state": "open"
+      }
+    ],
+    "ot_protocols": [],
+    "vulnerabilities": [
+      {
+        "severity": "high",
+        "description": "Telnet service detected - unencrypted protocol",
+        "recommendation": "Disable Telnet and use SSH instead",
+        "cve": "N/A"
+      }
+    ],
+    "services": []
+  },
+  {
+    "ip": "192.168.12.174",
+    "hostname": "C892-Router.lan",
+    "mac_address": "a4:53:0e:b0:c5:b2",
+    "vendor": "Cisco",
+    "status": "online",
+    "open_ports": [],
+    "ot_protocols": [],
+    "vulnerabilities": [],
+    "services": []
+  },
+  {
+    "ip": "192.168.12.190",
+    "hostname": "Research01.scepces.com",
+    "mac_address": "Unknown",
+    "vendor": "Unknown",
+    "status": "online",
+    "open_ports": [
+      {
+        "port": 80,
+        "service": "HTTP",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 445,
+        "service": "SMB",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 3389,
+        "service": "RDP",
+        "protocol": "tcp",
+        "state": "open"
+      },
+      {
+        "port": 8080,
+        "service": "HTTP-Alt",
+        "protocol": "tcp",
+        "state": "open"
+      }
+    ],
+    "ot_protocols": [],
+    "vulnerabilities": [
+      {
+        "severity": "high",
+        "description": "SMB service exposed - potential for EternalBlue",
+        "recommendation": "Apply MS17-010 patch and restrict SMB access",
+        "cve": "CVE-2017-0144"
+      }
+    ],
+    "services": []
+  }
+]

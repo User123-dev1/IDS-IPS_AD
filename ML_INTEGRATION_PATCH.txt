@@ -1,0 +1,181 @@
+﻿'''
+ML INTEGRATION PATCH
+Add these imports and code snippets to your network_scanner.py
+'''
+
+# ============================================================================
+# ADD TO IMPORTS SECTION (at the top of network_scanner.py)
+# ============================================================================
+
+# ML Integration
+try:
+    from scanner.ml_integration import MLAnomalyDetector
+    ML_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: ML integration not available: {e}")
+    ML_AVAILABLE = False
+    MLAnomalyDetector = None
+
+
+# ============================================================================
+# ADD TO YOUR SCANNER CLASS __init__ METHOD
+# ============================================================================
+
+def __init__(self, ...):
+    # Your existing initialization code...
+    
+    # ML Anomaly Detector
+    if ML_AVAILABLE:
+        try:
+            self.ml_detector = MLAnomalyDetector(model_path="data/models/hybrid_model")
+            self.ml_enabled = self.ml_detector.is_loaded
+            if self.ml_enabled:
+                print("✓ ML anomaly detection enabled")
+        except Exception as e:
+            print(f"Warning: ML detector initialization failed: {e}")
+            self.ml_detector = None
+            self.ml_enabled = False
+    else:
+        self.ml_detector = None
+        self.ml_enabled = False
+    
+    # ML Statistics
+    self.ml_anomaly_count = 0
+    self.ml_anomalies = []
+
+
+# ============================================================================
+# ADD TO YOUR PACKET CALLBACK METHOD
+# ============================================================================
+
+def packet_callback(self, packet):
+    '''Process captured packet'''
+    
+    # Your existing packet processing code...
+    # (extract IP, ports, etc.)
+    
+    # ML Anomaly Detection (ADD THIS SECTION)
+    if self.ml_enabled and hasattr(self, 'ml_detector'):
+        try:
+            # Prepare packet data for ML analysis
+            packet_data = {
+                'src_ip': packet[IP].src if packet.haslayer(IP) else 'unknown',
+                'dst_ip': packet[IP].dst if packet.haslayer(IP) else 'unknown',
+                'src_port': packet[TCP].sport if packet.haslayer(TCP) else 
+                           (packet[UDP].sport if packet.haslayer(UDP) else 0),
+                'dst_port': packet[TCP].dport if packet.haslayer(TCP) else 
+                           (packet[UDP].dport if packet.haslayer(UDP) else 0),
+                'protocol': 'TCP' if packet.haslayer(TCP) else 
+                           ('UDP' if packet.haslayer(UDP) else 'Other'),
+                'packet_size': len(packet),
+                'payload_size': len(packet[TCP].payload) if packet.haslayer(TCP) else 
+                               (len(packet[UDP].payload) if packet.haslayer(UDP) else 0),
+                'timestamp': datetime.now(),
+                'tcp_flags': int(packet[TCP].flags) if packet.haslayer(TCP) else 0
+            }
+            
+            # Run ML analysis
+            ml_result = self.ml_detector.analyze_packet(packet_data)
+            
+            # Handle anomaly
+            if ml_result['is_anomaly']:
+                self.ml_anomaly_count += 1
+                self._handle_ml_anomaly(packet_data, ml_result)
+                
+        except Exception as e:
+            # Don't crash scanner if ML fails
+            if hasattr(self, '_ml_error_logged') and not self._ml_error_logged:
+                print(f"ML analysis error: {e}")
+                self._ml_error_logged = True
+
+
+# ============================================================================
+# ADD NEW METHOD TO HANDLE ML ANOMALIES
+# ============================================================================
+
+def _handle_ml_anomaly(self, packet_data, ml_result):
+    '''Handle detected ML anomaly'''
+    
+    # Store anomaly
+    anomaly_info = {
+        'timestamp': packet_data['timestamp'],
+        'src_ip': packet_data['src_ip'],
+        'dst_ip': packet_data['dst_ip'],
+        'dst_port': packet_data['dst_port'],
+        'score': ml_result['anomaly_score'],
+        'confidence': ml_result['confidence'],
+        'details': ml_result['details']
+    }
+    self.ml_anomalies.append(anomaly_info)
+    
+    # Keep only last 100 anomalies
+    if len(self.ml_anomalies) > 100:
+        self.ml_anomalies = self.ml_anomalies[-100:]
+    
+    # Log high-confidence anomalies
+    if ml_result['confidence'] in ['high', 'medium']:
+        print(f"\\n⚠ ML ANOMALY DETECTED (confidence: {ml_result['confidence']})")
+        print(f"   {packet_data['src_ip']}:{packet_data['src_port']} → "
+              f"{packet_data['dst_ip']}:{packet_data['dst_port']}")
+        print(f"   Score: {ml_result['anomaly_score']:.3f}")
+        print(f"   {ml_result['details']}")
+    
+    # Trigger your existing alert system (if you have one)
+    if hasattr(self, 'trigger_alert'):
+        self.trigger_alert({
+            'type': 'ml_anomaly',
+            'severity': 'high' if ml_result['confidence'] == 'high' else 'medium',
+            'message': ml_result['details'],
+            'source': packet_data['src_ip'],
+            'destination': packet_data['dst_ip']
+        })
+
+
+# ============================================================================
+# ADD METHOD TO GET ML STATISTICS
+# ============================================================================
+
+def get_ml_statistics(self):
+    '''Get ML detection statistics'''
+    if not self.ml_enabled or not self.ml_detector:
+        return None
+    
+    detector_stats = self.ml_detector.get_statistics()
+    recent_anomalies = self.ml_detector.get_recent_anomalies(limit=10)
+    
+    return {
+        'enabled': self.ml_enabled,
+        'total_packets': detector_stats['total_packets'],
+        'anomaly_count': detector_stats['anomaly_count'],
+        'anomaly_rate': detector_stats['anomaly_rate'],
+        'recent_anomalies': recent_anomalies
+    }
+
+
+# ============================================================================
+# UPDATE YOUR STATISTICS/STATUS METHOD
+# ============================================================================
+
+def print_statistics(self):
+    '''Print capture statistics'''
+    
+    # Your existing statistics code...
+    
+    # Add ML statistics
+    if self.ml_enabled:
+        print("\\n" + "="*60)
+        print("  ML Anomaly Detection Statistics")
+        print("="*60)
+        
+        ml_stats = self.get_ml_statistics()
+        if ml_stats:
+            print(f"  Total Analyzed: {ml_stats['total_packets']:,}")
+            print(f"  Anomalies: {ml_stats['anomaly_count']:,}")
+            print(f"  Rate: {ml_stats['anomaly_rate']:.2f}%")
+            
+            if ml_stats['recent_anomalies']:
+                print(f"\\n  Recent Anomalies:")
+                for i, anom in enumerate(ml_stats['recent_anomalies'][:5], 1):
+                    print(f"    {i}. {anom['src_ip']} → {anom['dst_ip']} "
+                          f"(score: {anom['score']:.2f})")
+

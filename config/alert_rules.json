@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "enabled": true,
+  "whitelist": {
+    "ips": [
+      "192.168.12.1"
+    ],
+    "ports": [
+      80,
+      443
+    ]
+  },
+  "rules": [
+    {
+      "id": "0111",
+      "name": "Rule",
+      "description": "port control",
+      "enabled": true,
+      "severity": "MEDIUM",
+      "category": "SSH",
+      "conditions": {
+        "type": "port",
+        "operator": "in",
+        "values": []
+      }
+    }
+  ]
+}

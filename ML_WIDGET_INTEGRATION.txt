@@ -1,0 +1,79 @@
+﻿╔═══════════════════════════════════════════════════════════════╗
+║         ML ANOMALY WIDGET INTEGRATION GUIDE                   ║
+╚═══════════════════════════════════════════════════════════════╝
+
+OPTION 1: ADD AS NEW TAB (Recommended)
+═══════════════════════════════════════════════════════════════
+
+Step 1: Import the widget at the top of your main GUI file
+---------------------------------------------------------------
+from gui.ml_anomaly_widget import MLAnomalyWidget
+
+Step 2: Add to your tab widget (usually in __init__ or setup_ui)
+---------------------------------------------------------------
+# Find where you create tabs (e.g., QTabWidget)
+# Add this line:
+self.ml_tab = MLAnomalyWidget(self)
+self.tab_widget.addTab(self.ml_tab, "🧠 ML Anomaly Detection")
+
+
+OPTION 2: ADD TO NETWORK MONITOR SCREEN
+═══════════════════════════════════════════════════════════════
+
+Step 1: Import the widget
+---------------------------------------------------------------
+from gui.ml_anomaly_widget import MLAnomalyWidget
+
+Step 2: Add to network monitor layout
+---------------------------------------------------------------
+# In your network monitor setup:
+self.ml_widget = MLAnomalyWidget(self)
+self.layout.addWidget(self.ml_widget)  # Or use your layout name
+
+
+OPTION 3: STANDALONE WINDOW (Quick Test)
+═══════════════════════════════════════════════════════════════
+Just run:
+    python src/gui/ml_anomaly_widget.py
+
+
+EXAMPLE COMPLETE INTEGRATION
+═══════════════════════════════════════════════════════════════
+
+# main_window.py or network_monitor.py
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QWidget
+from gui.ml_anomaly_widget import MLAnomalyWidget
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        # Create tab widget
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+        
+        # Add existing tabs
+        self.tabs.addTab(self.network_tab, "Network Monitor")
+        self.tabs.addTab(self.assets_tab, "Assets")
+        
+        # ADD ML ANOMALY DETECTION TAB
+        self.ml_tab = MLAnomalyWidget(self)
+        self.tabs.addTab(self.ml_tab, "🧠 ML Detection")
+
+
+WHAT THE WIDGET SHOWS
+═══════════════════════════════════════════════════════════════
+• ML Detector Status (Active/Inactive)
+• Real-time Statistics:
+  - Packets Analyzed
+  - Anomalies Detected  
+  - Detection Rate
+• Progress Bar (Anomaly Rate visualization)
+• Table of Recent Anomalies:
+  - Timestamp
+  - Source IP
+  - Destination IP
+  - Anomaly Score
+  - Details
+• Clear Statistics button
+

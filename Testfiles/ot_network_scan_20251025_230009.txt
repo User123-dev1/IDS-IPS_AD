@@ -1,0 +1,14 @@
+OT/ICS Network Scan Report
+Network: 192.168.12.0/24
+Timestamp: 2025-10-25 23:00:09.411735
+Hosts Scanned: 11
+
+OT/ICS DEVICES:
+  192.168.12.228 - 192.168.12.228 - EtherNet/IP
+
+VULNERABLE DEVICES:
+  192.168.12.162 - Critical: 0, High: 1
+  192.168.12.190 - Critical: 0, High: 1
+  192.168.12.193 - Critical: 0, High: 1
+  192.168.12.228 - Critical: 1, High: 0
+  192.168.12.229 - Critical: 0, High: 1

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0", "pybind11>=2.10.0", "cmake"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot-asset-manager"
+version = "1.0.0"
+description = "Industrial OT Asset Discovery and Management System"
+authors = [{name = "Your Name", email = "you@example.com"}]
+dependencies = [
+    "PyQt6>=6.5.0",
+    "matplotlib>=3.7.0",
+    "networkx>=3.1",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "sqlalchemy>=2.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "plotly>=5.15.0",
+    "dash>=2.10.0",
+    "scapy>=2.5.0",
+    "cryptography>=41.0.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.4.0",
+    "pytest-cov>=4.1.0",
+]
