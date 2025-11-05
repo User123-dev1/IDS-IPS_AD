@@ -238,22 +238,30 @@ class NetworkMonitor:
                     f"{len(self.baseline.common_protocols)} protocols")
 
     def _check_new_device_anomaly(self, ip: str):
-        """Check if new device is anomalous"""
+        """Check if new device is anomalous and trigger alert"""
         if not self.learning_mode:
             anomaly = Anomaly(
                 timestamp=datetime.now(),
-                severity='MEDIUM',
+                severity='HIGH',  # Elevated to HIGH for security awareness
                 category='NEW_DEVICE',
-                description=f"New device detected on network: {ip}",
-                source_ip=ip
+                description=f"🆕 NEW DEVICE CONNECTED: {ip} - Not in baseline, requires investigation",
+                source_ip=ip,
+                details={
+                    'action_required': 'Verify device authorization and add to asset inventory',
+                    'recommendation': 'Investigate immediately if unauthorized'
+                }
             )
             self.anomalies.append(anomaly)
-            logger.warning(f"Anomaly detected: New device {ip}")
+            logger.warning(f"⚠️ SECURITY ALERT: New device detected on network: {ip}")
+            logger.info(f"Action Required: Verify if device {ip} is authorized")
 
     def _detect_anomalies(self, packet: PacketInfo):
-        """Detect anomalies in packet"""
+        """Detect anomalies in packet with enhanced IPS capabilities"""
         if not self.baseline:
             return
+
+        # IPS: Detect potential attack patterns
+        self._detect_attack_patterns(packet)
 
         # Evaluate custom alert rules first
         if hasattr(self, 'alert_rules_engine') and self.alert_rules_engine and self.alert_rules_engine.enabled:
@@ -264,9 +272,9 @@ class NetworkMonitor:
                 'dst_port': packet.dst_port,
                 'protocol': packet.protocol
             }
-            
+
             custom_alerts = self.alert_rules_engine.evaluate_packet(packet_data)
-            
+
             # Convert custom alerts to Anomaly objects
             for alert in custom_alerts:
                 anomaly = Anomaly(
@@ -275,7 +283,7 @@ class NetworkMonitor:
                     category=alert['category'],
                     description=f"{alert['rule_name']}: {alert['description']}",
                     source_ip=alert['source_ip'],
-                    additional_info={
+                    details={
                         'rule_id': alert['rule_id'],
                         'dest_ip': alert['dest_ip'],
                         'dest_port': alert['dest_port']
@@ -290,7 +298,7 @@ class NetworkMonitor:
 
             if packet.protocol in industrial_protocols:
                 severity = 'HIGH'
-                description = f"Unexpected industrial protocol detected: {packet.protocol}"
+                description = f"⚠️ Unexpected industrial protocol detected: {packet.protocol}"
             else:
                 severity = 'LOW'
                 description = f"Unusual protocol detected: {packet.protocol}"
@@ -316,7 +324,7 @@ class NetworkMonitor:
                     timestamp=datetime.now(),
                     severity='HIGH',
                     category='UNUSUAL_PORT',
-                    description=f"Traffic to industrial port {packet.dst_port} ({packet.protocol})",
+                    description=f"🚨 Traffic to industrial port {packet.dst_port} ({packet.protocol})",
                     source_ip=packet.src_ip,
                     details={
                         'port': packet.dst_port,
@@ -325,6 +333,132 @@ class NetworkMonitor:
                     }
                 )
                 self.anomalies.append(anomaly)
+
+    def _detect_attack_patterns(self, packet: PacketInfo):
+        """Detect common attack patterns (IPS functionality)"""
+
+        # Track packet rates per source IP for rate-based attacks
+        if not hasattr(self, '_packet_rate_tracker'):
+            self._packet_rate_tracker = defaultdict(lambda: {'count': 0, 'last_reset': datetime.now()})
+
+        src_ip = packet.src_ip
+        tracker = self._packet_rate_tracker[src_ip]
+
+        # Reset counter every minute
+        if (datetime.now() - tracker['last_reset']).total_seconds() > 60:
+            tracker['count'] = 0
+            tracker['last_reset'] = datetime.now()
+
+        tracker['count'] += 1
+
+        # 1. Port Scanning Detection (high rate of connections to different ports)
+        if tracker['count'] > 100:  # More than 100 packets per minute from single source
+            anomaly = Anomaly(
+                timestamp=datetime.now(),
+                severity='CRITICAL',
+                category='PORT_SCAN',
+                description=f"🚨 ATTACK DETECTED: Potential port scanning from {src_ip}",
+                source_ip=src_ip,
+                details={
+                    'packet_rate': tracker['count'],
+                    'attack_type': 'Port Scan / Network Reconnaissance',
+                    'action': 'BLOCK recommended - Add firewall rule to block this IP'
+                }
+            )
+            self.anomalies.append(anomaly)
+            logger.critical(f"🚨 IPS ALERT: Port scanning detected from {src_ip}")
+
+        # 2. Brute Force Attack Detection (multiple attempts to authentication ports)
+        auth_ports = {22, 23, 3389, 5900, 21, 445}  # SSH, Telnet, RDP, VNC, FTP, SMB
+        if packet.dst_port in auth_ports:
+            if not hasattr(self, '_auth_attempt_tracker'):
+                self._auth_attempt_tracker = defaultdict(lambda: {'count': 0, 'last_reset': datetime.now()})
+
+            auth_tracker = self._auth_attempt_tracker[src_ip]
+            if (datetime.now() - auth_tracker['last_reset']).total_seconds() > 60:
+                auth_tracker['count'] = 0
+                auth_tracker['last_reset'] = datetime.now()
+
+            auth_tracker['count'] += 1
+
+            if auth_tracker['count'] > 20:  # More than 20 auth attempts per minute
+                anomaly = Anomaly(
+                    timestamp=datetime.now(),
+                    severity='CRITICAL',
+                    category='BRUTE_FORCE',
+                    description=f"🚨 ATTACK DETECTED: Brute force attack from {src_ip} targeting port {packet.dst_port}",
+                    source_ip=src_ip,
+                    details={
+                        'target_port': packet.dst_port,
+                        'target_ip': packet.dst_ip,
+                        'attempt_count': auth_tracker['count'],
+                        'attack_type': 'Credential Brute Force',
+                        'action': 'BLOCK IMMEDIATELY - Attackingin progress'
+                    }
+                )
+                self.anomalies.append(anomaly)
+                logger.critical(f"🚨 IPS ALERT: Brute force attack detected from {src_ip} on port {packet.dst_port}")
+
+        # 3. OT/ICS Protocol Attack Detection
+        ot_attack_ports = {502, 102, 44818, 2222, 20000, 4840}  # Modbus, S7, EIP, DNP3, OPC-UA
+        if packet.dst_port in ot_attack_ports:
+            anomaly = Anomaly(
+                timestamp=datetime.now(),
+                severity='CRITICAL',
+                category='OT_ATTACK',
+                description=f"🚨 CRITICAL: OT/ICS protocol access from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
+                source_ip=src_ip,
+                details={
+                    'target_port': packet.dst_port,
+                    'target_device': packet.dst_ip,
+                    'protocol': 'OT/ICS',
+                    'attack_type': 'Industrial Control System Intrusion',
+                    'action': 'INVESTIGATE IMMEDIATELY - Potential sabotage attempt'
+                }
+            )
+            self.anomalies.append(anomaly)
+            logger.critical(f"🚨 IPS ALERT: OT protocol access from {src_ip} to critical port {packet.dst_port}")
+
+        # 4. DoS/DDoS Detection (extremely high packet rate)
+        if tracker['count'] > 500:  # More than 500 packets per minute
+            anomaly = Anomaly(
+                timestamp=datetime.now(),
+                severity='CRITICAL',
+                category='DOS_ATTACK',
+                description=f"🚨 ATTACK DETECTED: Potential DoS/DDoS attack from {src_ip}",
+                source_ip=src_ip,
+                details={
+                    'packet_rate': tracker['count'],
+                    'attack_type': 'Denial of Service (DoS)',
+                    'action': 'BLOCK IMMEDIATELY - Network flooding detected'
+                }
+            )
+            self.anomalies.append(anomaly)
+            logger.critical(f"🚨 IPS ALERT: DoS attack detected from {src_ip}")
+
+        # 5. Malware C2 Communication Detection (unusual external connections)
+        if not hasattr(self, '_known_external_ips'):
+            self._known_external_ips = set()
+
+        # Check if destination is external (simplified check)
+        if not packet.dst_ip.startswith('192.168.') and not packet.dst_ip.startswith('10.') and not packet.dst_ip.startswith('172.'):
+            if packet.dst_ip not in self._known_external_ips:
+                self._known_external_ips.add(packet.dst_ip)
+                anomaly = Anomaly(
+                    timestamp=datetime.now(),
+                    severity='HIGH',
+                    category='EXTERNAL_CONNECTION',
+                    description=f"⚠️ Suspicious external connection from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
+                    source_ip=src_ip,
+                    details={
+                        'external_ip': packet.dst_ip,
+                        'port': packet.dst_port,
+                        'attack_type': 'Possible Malware C2 Communication',
+                        'action': 'Investigate source device for malware'
+                    }
+                )
+                self.anomalies.append(anomaly)
+                logger.warning(f"⚠️ IPS ALERT: External connection from {src_ip} to {packet.dst_ip}")
 
     def get_discovered_devices(self) -> List[Dict]:
         """Get list of discovered devices"""
@@ -343,6 +477,45 @@ class NetworkMonitor:
                     'connection_count': len(profile.connections)
                 })
             return devices
+
+    def get_new_devices_for_inventory(self, since_minutes: int = 5) -> List[Dict]:
+        """Get newly discovered devices for automatic asset inventory addition
+
+        Args:
+            since_minutes: Get devices discovered within last N minutes
+
+        Returns:
+            List of device dictionaries suitable for asset inventory
+        """
+        cutoff_time = datetime.now() - timedelta(minutes=since_minutes)
+        new_devices = []
+
+        with self.device_lock:
+            for ip, profile in self.devices.items():
+                # Only include devices discovered after cutoff time
+                if profile.first_seen > cutoff_time:
+                    # Determine if it's an OT device based on ports
+                    ot_ports = {502, 44818, 2222, 102, 20000, 4840, 47808, 1911, 789, 5094}
+                    is_ot = bool(profile.ports & ot_ports)
+
+                    device_info = {
+                        'ip': ip,
+                        'hostname': ip,  # Will be enriched by asset manager
+                        'mac_address': profile.mac_address or 'Unknown',
+                        'status': 'online',
+                        'first_seen': profile.first_seen.isoformat(),
+                        'last_seen': profile.last_seen.isoformat(),
+                        'protocols': list(profile.protocols),
+                        'open_ports': sorted(list(profile.ports)),
+                        'is_ot_device': is_ot,
+                        'packet_count': profile.packet_count,
+                        'byte_count': profile.byte_count,
+                        'source': 'live_monitoring',
+                        'auto_discovered': True
+                    }
+                    new_devices.append(device_info)
+
+        return new_devices
 
     def get_protocol_statistics(self) -> Dict:
         """Get protocol statistics"""

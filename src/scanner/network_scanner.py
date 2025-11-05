@@ -156,60 +156,138 @@ class EnterpriseNetworkScanner:
         return ml_result
 
     def _analyze_device_profile(self, scan_result: Dict) -> Dict:
-        """Analyze device profile and characteristics"""
+        """Analyze device profile and characteristics with enhanced OT/IT classification"""
         profile = {
             'device_type': 'Unknown',
             'is_ot_device': False,
             'confidence': 0.0,
-            'characteristics': []
+            'characteristics': [],
+            'category': 'Unknown'  # OT, IT, or Hybrid
         }
 
         open_ports = scan_result.get('open_ports', [])
         ot_protocols = scan_result.get('ot_protocols', [])
+        vendor = scan_result.get('vendor', 'Unknown')
 
-        # Determine if it's an OT device
+        # Check if vendor is a known OT/ICS vendor
+        ot_vendors = [
+            'Rockwell', 'Allen-Bradley', 'Siemens', 'Schneider', 'Modicon',
+            'ABB', 'Honeywell', 'Emerson', 'Yokogawa', 'General Electric',
+            'GE Fanuc', 'Phoenix Contact', 'Mitsubishi', 'Omron', 'WAGO',
+            'Beckhoff'
+        ]
+        is_ot_vendor = any(ot_v in vendor for ot_v in ot_vendors)
+
+        # Determine if it's an OT device based on multiple factors
         if ot_protocols:
             profile['is_ot_device'] = True
-            profile['confidence'] = min(len(ot_protocols) * 0.3 + 0.4, 1.0)
+            profile['category'] = 'OT'
+            profile['confidence'] = min(len(ot_protocols) * 0.25 + 0.5, 0.95)
 
-            # Classify device type based on protocols
+            # Classify specific OT device type based on protocols
             protocol_names = [p.get('protocol', '') for p in ot_protocols]
 
-            if 'Modbus' in protocol_names or 'Siemens S7' in protocol_names:
-                profile['device_type'] = 'PLC/Controller'
+            if 'Modbus' in protocol_names or 'Siemens S7' in protocol_names or 'EtherNet/IP' in protocol_names:
+                profile['device_type'] = 'PLC (Programmable Logic Controller)'
                 profile['characteristics'].append('Industrial Controller')
+                profile['characteristics'].append('Critical OT Asset')
             elif 'OPC UA' in protocol_names:
-                profile['device_type'] = 'SCADA/HMI'
-                profile['characteristics'].append('Supervisory System')
+                profile['device_type'] = 'SCADA Server/HMI'
+                profile['characteristics'].append('Supervisory Control System')
+                profile['characteristics'].append('High-Value Target')
+            elif 'DNP3' in protocol_names:
+                profile['device_type'] = 'RTU/SCADA Device'
+                profile['characteristics'].append('Remote Terminal Unit')
+                profile['characteristics'].append('Utility/Power System')
             elif 'BACnet' in protocol_names:
-                profile['device_type'] = 'Building Automation'
-                profile['characteristics'].append('BMS Device')
+                profile['device_type'] = 'Building Management System (BMS)'
+                profile['characteristics'].append('HVAC/Building Control')
+            elif 'ProfiNet' in protocol_names:
+                profile['device_type'] = 'Industrial Ethernet Device'
+                profile['characteristics'].append('Factory Automation')
             else:
-                profile['device_type'] = 'OT Device'
+                profile['device_type'] = 'OT/ICS Device'
+                profile['characteristics'].append('Industrial Protocol Detected')
+
+            # Check for hybrid (OT device with IT services)
+            services = [p.get('service', '').lower() for p in open_ports]
+            if 'http' in str(services) or 'ssh' in services or 'smb' in str(services):
+                profile['category'] = 'Hybrid (OT with IT Services)'
+                profile['characteristics'].append('Has IT Management Interface')
+
+        elif is_ot_vendor:
+            # OT vendor but no OT protocols detected - likely OT support device
+            profile['is_ot_device'] = True
+            profile['category'] = 'OT Support'
+            profile['device_type'] = 'OT Support Device/Engineering Workstation'
+            profile['confidence'] = 0.6
+            profile['characteristics'].append('OT Vendor Equipment')
+            profile['characteristics'].append('Possible Engineering Station')
 
         else:
-            # IT device classification
+            # IT device classification based on services and ports
+            profile['is_ot_device'] = False
+            profile['category'] = 'IT'
             services = [p.get('service', '').lower() for p in open_ports]
+            port_numbers = [p.get('port', 0) for p in open_ports]
 
-            if 'http' in str(services) or 'https' in str(services):
-                profile['device_type'] = 'Web Server/Workstation'
-                profile['characteristics'].append('Network Service')
-            elif 'ssh' in services:
-                profile['device_type'] = 'Server/Network Device'
-                profile['characteristics'].append('Remote Access Enabled')
-            elif 'smb' in str(services):
-                profile['device_type'] = 'File Server/Workstation'
-                profile['characteristics'].append('File Sharing')
+            # Detailed IT device classification
+            if 80 in port_numbers or 443 in port_numbers or 8080 in port_numbers:
+                if 22 in port_numbers:  # SSH + Web
+                    profile['device_type'] = 'Web/Application Server'
+                    profile['confidence'] = 0.75
+                else:
+                    profile['device_type'] = 'Web Server/Workstation'
+                    profile['confidence'] = 0.65
+                profile['characteristics'].append('Web Services')
+
+            elif 22 in port_numbers:  # SSH
+                if 445 in port_numbers:  # SSH + SMB
+                    profile['device_type'] = 'Linux File Server'
+                    profile['confidence'] = 0.8
+                else:
+                    profile['device_type'] = 'Server/Network Device'
+                    profile['confidence'] = 0.7
+                profile['characteristics'].append('SSH Remote Access')
+
+            elif 445 in port_numbers or 139 in port_numbers:  # SMB
+                profile['device_type'] = 'Windows File Server/Workstation'
+                profile['confidence'] = 0.75
+                profile['characteristics'].append('Windows File Sharing')
+
+            elif 3389 in port_numbers:  # RDP
+                profile['device_type'] = 'Windows Server/Workstation'
+                profile['confidence'] = 0.8
+                profile['characteristics'].append('Remote Desktop Enabled')
+
+            elif 23 in port_numbers:  # Telnet
+                profile['device_type'] = 'Network Device/Legacy System'
+                profile['confidence'] = 0.6
+                profile['characteristics'].append('Legacy Management')
+
             else:
-                profile['device_type'] = 'Network Device'
+                # Check for network infrastructure
+                if len(port_numbers) < 5:
+                    profile['device_type'] = 'Network Infrastructure'
+                    profile['confidence'] = 0.5
+                else:
+                    profile['device_type'] = 'Generic IT Device'
+                    profile['confidence'] = 0.4
 
-            profile['confidence'] = 0.5
-
-        # Add characteristics based on scan results
+        # Additional characteristics based on security posture
+        if len(open_ports) > 15:
+            profile['characteristics'].append('Excessive Open Ports')
         if len(open_ports) > 10:
-            profile['characteristics'].append('Multiple Services')
+            profile['characteristics'].append('Multiple Services Running')
+
         if scan_result.get('vulnerabilities'):
-            profile['characteristics'].append('Security Issues Detected')
+            vuln_count = len(scan_result['vulnerabilities'])
+            if vuln_count > 0:
+                profile['characteristics'].append(f'{vuln_count} Vulnerabilities Detected')
+
+        # Add vendor info to characteristics if known
+        if vendor != 'Unknown':
+            profile['characteristics'].append(f'Vendor: {vendor}')
 
         return profile
 
@@ -423,23 +501,98 @@ class EnterpriseNetworkScanner:
         return vulns
     
     def get_vendor_from_mac(self, mac: str) -> str:
-        """Get vendor from MAC address"""
+        """Get vendor from MAC address with comprehensive OUI database"""
         if not mac or mac == "Unknown" or mac == ":::":
             return "Unknown"
-        
-        # OUI database (first 3 octets)
+
+        # Comprehensive OUI database (first 3 octets) - Major OT/ICS and IT vendors
         oui_db = {
-            "00:1C:7F": "Check Point Software",
+            # Major OT/ICS Vendors
             "00:1D:9C": "Rockwell Automation",
+            "00:00:BC": "Allen-Bradley (Rockwell)",
+            "00:C0:A8": "Rockwell Automation",
             "88:90:8D": "Siemens",
-            "F8:A2:D6": "Xerox",
-            "B0:99:D7": "Samsung",
+            "A0:36:BC": "Siemens",
+            "00:0E:8C": "Siemens",
+            "00:1B:1B": "Siemens",
+            "00:50:7F": "Schneider Electric",
+            "00:80:F4": "Schneider Electric (Modicon)",
+            "00:06:29": "Schneider Electric",
+            "00:C0:F2": "Schneider Electric",
+            "00:80:7C": "ABB",
+            "00:18:FE": "ABB",
+            "BC:AE:C5": "ABB",
+            "00:10:A4": "Honeywell",
+            "00:E0:4C": "Honeywell",
+            "00:50:C2": "Emerson Process Management",
+            "00:1E:8F": "Emerson",
+            "00:D0:C9": "Emerson",
+            "00:0E:64": "Yokogawa",
+            "00:80:63": "Yokogawa",
+            "00:00:5E": "General Electric",
+            "00:30:6E": "GE Fanuc Automation",
+            "00:A0:45": "Phoenix Contact",
+            "00:0E:B0": "Phoenix Contact",
+            "00:50:A0": "Mitsubishi Electric",
+            "00:80:63": "Mitsubishi Electric",
+            "00:19:99": "Omron",
+            "00:00:6B": "WAGO",
+            "00:30:DE": "Beckhoff Automation",
+            "00:01:05": "Beckhoff",
+
+            # Network Equipment Vendors
+            "00:1C:7F": "Check Point Software",
             "A4:53:0E": "Cisco",
-            "44:6D:7F": "Unknown Device"
+            "00:1D:A2": "Cisco",
+            "00:0D:EC": "Cisco",
+            "00:E0:1E": "Cisco",
+            "00:26:0B": "Cisco",
+            "D0:D0:FD": "Cisco",
+            "00:50:56": "VMware",
+            "00:0C:29": "VMware",
+            "00:1C:14": "VMware",
+            "00:24:1D": "Fortinet",
+            "00:09:0F": "Fortinet",
+            "70:4C:A5": "Fortinet",
+            "00:03:FF": "Microsoft",
+            "00:50:F2": "Microsoft",
+            "00:12:5A": "Microsoft",
+            "08:00:27": "Oracle VirtualBox",
+            "00:04:23": "Intel",
+            "00:1B:21": "Intel",
+            "00:13:20": "Intel",
+            "AC:DE:48": "Intel",
+            "00:0A:95": "Dell",
+            "00:14:22": "Dell",
+            "B8:2A:72": "Dell",
+            "D0:67:E5": "Dell",
+            "00:1E:68": "Hewlett Packard (HP)",
+            "00:23:7D": "Hewlett Packard",
+            "00:24:81": "Hewlett Packard",
+            "EC:B1:D7": "Hewlett Packard",
+            "F8:A2:D6": "Xerox",
+            "00:00:AA": "Xerox",
+            "B0:99:D7": "Samsung",
+            "00:12:FB": "Samsung",
+            "00:1D:25": "Samsung",
+            "00:18:0A": "Lenovo",
+            "00:21:86": "Lenovo",
+            "00:1C:25": "Lenovo",
+
+            # Additional Generic
+            "44:6D:7F": "Generic Device",
+            "52:54:00": "QEMU Virtual NIC",
+            "00:15:5D": "Microsoft Hyper-V",
+            "00:05:69": "VMware ESX",
         }
 
-        oui = ':'.join(mac.split(':')[:3]).upper()
-        return oui_db.get(oui, "Unknown")
+        # Normalize MAC format and extract OUI
+        try:
+            mac_clean = mac.replace('-', ':').upper()
+            oui = ':'.join(mac_clean.split(':')[:3])
+            return oui_db.get(oui, "Unknown")
+        except:
+            return "Unknown"
 
 
 

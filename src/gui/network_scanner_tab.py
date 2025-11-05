@@ -411,8 +411,16 @@ class NetworkScannerTab(QWidget):
         self.scan_complete.emit(self.scan_results)
 
     def add_scan_result(self, result: Dict):
-        """Add scan result to table"""
+        """Add scan result to table - ONLY for live/active devices"""
         try:
+            # Check if device is actually online before adding
+            status = result.get('status', 'unknown')
+            if status != 'online':
+                # Skip offline devices - don't add them to results or display
+                self.log_status(f"⊘ Skipped offline device: {result.get('ip')} (not active)")
+                return
+
+            # Only add online/active devices
             self.scan_results.append(result)
 
             row = self.results_table.rowCount()
@@ -427,13 +435,9 @@ class NetworkScannerTab(QWidget):
             hostname_item = QTableWidgetItem(hostname)
             self.results_table.setItem(row, 1, hostname_item)
 
-            # Status
-            is_up = result.get('is_up', False)
-            status_item = QTableWidgetItem("Online" if is_up else "Offline")
-            if is_up:
-                status_item.setForeground(QColor("#27ae60"))
-            else:
-                status_item.setForeground(QColor("#e74c3c"))
+            # Status (always "Online" since we filter offline devices)
+            status_item = QTableWidgetItem("Online")
+            status_item.setForeground(QColor("#27ae60"))
             self.results_table.setItem(row, 2, status_item)
 
             # Open Ports
@@ -487,12 +491,33 @@ class NetworkScannerTab(QWidget):
                 self.results_table.setItem(row, 6, QTableWidgetItem("N/A"))
                 self.results_table.setItem(row, 7, QTableWidgetItem("N/A"))
 
-            # Device Type (from ML or manual detection)
-            device_type = result.get('device_type', 'Unknown')
+            # Device Type (from enhanced ML analysis)
+            device_type = 'Unknown'
+            if ml_analysis and 'device_profile' in ml_analysis:
+                device_profile = ml_analysis.get('device_profile', {})
+                device_type = device_profile.get('device_type', 'Unknown')
+                is_ot = device_profile.get('is_ot_device', False)
+                category = device_profile.get('category', '')
+
+                # Add category indicator for better visibility
+                if is_ot:
+                    device_type = f"🏭 {device_type}"
+                else:
+                    device_type = f"💻 {device_type}"
+            else:
+                device_type = result.get('device_type', 'Unknown')
+
             device_item = QTableWidgetItem(device_type)
+
+            # Color code by device category
+            if '🏭' in device_type:  # OT Device
+                device_item.setForeground(QColor("#e67e22"))  # Orange for OT
+            else:  # IT Device
+                device_item.setForeground(QColor("#3498db"))  # Blue for IT
+
             self.results_table.setItem(row, 8, device_item)
 
-            self.log_status(f"✓ Added: {result.get('ip')} - {risk_level if ml_analysis else 'No ML data'}")
+            self.log_status(f"✓ Added: {result.get('ip')} - {device_type} - {risk_level if ml_analysis else 'No ML data'}")
 
             # Emit signal to notify main window of discovered device
             self.device_discovered.emit(result)
