@@ -441,8 +441,13 @@ class MainWindow(QMainWindow):
         self.monitor_tab = LiveDashboardWidget()
         self.central_tabs.addTab(self.monitor_tab, " Network Monitor")
 
-        self.ml_tab = MLAnomalyWidget()
-        self.central_tabs.addTab(self.ml_tab, " ML Detection")
+        # REMOVED: Duplicate "ML Detection" tab with legacy ML system
+        # Network Monitor now includes the improved ML detector (90.6% accuracy, 97.3% recall)
+        # - To train model: python train_improved.py (command line)
+        # - To test detection: Use threat_simulations/ scripts from different PC
+        # - Legacy system (HybridSecuritySystem) has been replaced with ImprovedMLDetector
+        # self.ml_tab = MLAnomalyWidget()
+        # self.central_tabs.addTab(self.ml_tab, " ML Detection")
 
         # ML Performance/Results Tab
         self.ml_performance_tab = MLPerformanceWidget()
@@ -2675,8 +2680,9 @@ COMPLIANCE FRAMEWORKS:
                 self.monitor_tab.refresh()
             if hasattr(self, 'scanner_tab') and hasattr(self.scanner_tab, 'update_statistics'):
                 self.scanner_tab.update_statistics()
-            if hasattr(self.ml_tab, 'refresh'):
-                self.ml_tab.refresh()
+            # ML Detection tab removed - Network Monitor has integrated ML detection
+            # if hasattr(self, 'ml_tab') and hasattr(self.ml_tab, 'refresh'):
+            #     self.ml_tab.refresh()
 
             self.log("✅ All data refreshed!")
         except Exception as e:
