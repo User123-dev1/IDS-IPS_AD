@@ -42,7 +42,7 @@ class ImprovedIDSDetector:
         with open(self.model_dir / 'improved_ids_metadata.json', 'r') as f:
             self.metadata = json.load(f)
 
-        print(f"✓ Loaded model with {self.metadata['accuracy']:.1%} accuracy")
+        print(f"✓ Loaded model with {self.metadata['test_accuracy']:.1%} accuracy")
         print(f"✓ Using {len(self.features)} features")
 
     def extract_features(self, network_packet):
@@ -141,10 +141,10 @@ if __name__ == '__main__':
     detector = ImprovedIDSDetector()
 
     print("\nModel Performance:")
-    print(f"  Accuracy:  {detector.metadata['accuracy']:.1%}")
-    print(f"  Precision: {detector.metadata['precision']:.1%}")
-    print(f"  Recall:    {detector.metadata['recall']:.1%}")
-    print(f"  F1-Score:  {detector.metadata['f1_score']:.1%}")
+    print(f"  Accuracy:  {detector.metadata['test_accuracy']:.1%}")
+    print(f"  Precision: {detector.metadata['test_precision']:.1%}")
+    print(f"  Recall:    {detector.metadata['test_recall']:.1%}")
+    print(f"  F1-Score:  {detector.metadata['test_f1']:.1%}")
 
     # Example 1: Normal traffic
     print("\n" + "=" * 70)
