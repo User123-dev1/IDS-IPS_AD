@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from .secure_packet_capture import SecurePacketCapture, PacketInfo
 from .alert_rules_engine import AlertRulesEngine
+from .improved_ml_detector import get_improved_detector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -107,6 +108,18 @@ class NetworkMonitor:
             self.alert_rules_engine = None
         self.protocol_history = deque(maxlen=60)  # 1 minute
 
+        # Initialize improved ML detector (90.6% accuracy model)
+        try:
+            self.improved_ml_detector = get_improved_detector()
+            if self.improved_ml_detector.is_loaded:
+                logger.info(f"✓ Improved ML detector enabled (Accuracy: {self.improved_ml_detector.metadata['test_accuracy']:.1%})")
+            else:
+                logger.warning("Improved ML detector not loaded - using rule-based detection only")
+                self.improved_ml_detector = None
+        except Exception as e:
+            logger.warning(f"Could not load improved ML detector: {e}")
+            self.improved_ml_detector = None
+
         logger.info("NetworkMonitor initialized")
 
     def start_monitoring(self,
@@ -183,6 +196,10 @@ class NetworkMonitor:
             # Anomaly detection (if not in learning mode)
             if not self.learning_mode and self.baseline:
                 self._detect_anomalies(packet)
+
+            # Improved ML-based detection (flow-based analysis)
+            if self.improved_ml_detector:
+                self._ml_detect_attacks(packet)
 
         except Exception as e:
             logger.error(f"Error processing packet: {e}")
@@ -459,6 +476,64 @@ class NetworkMonitor:
                 )
                 self.anomalies.append(anomaly)
                 logger.warning(f"⚠️ IPS ALERT: External connection from {src_ip} to {packet.dst_ip}")
+
+    def _ml_detect_attacks(self, packet: PacketInfo):
+        """Use improved ML model for flow-based attack detection"""
+        try:
+            # Convert PacketInfo to dict format for ML detector
+            packet_data = {
+                'src_ip': packet.src_ip,
+                'dst_ip': packet.dst_ip,
+                'src_port': packet.src_port,
+                'dst_port': packet.dst_port,
+                'protocol': packet.protocol,
+                'packet_size': packet.size,
+                'ttl': getattr(packet, 'ttl', 64),  # Default TTL if not available
+                'tcp_flags': getattr(packet, 'tcp_flags', 0),
+                'timestamp': datetime.now()
+            }
+
+            # Process packet through improved ML detector (flow-based)
+            result = self.improved_ml_detector.process_packet(packet_data)
+
+            # If flow analysis completed and attack detected, create anomaly
+            if result and result.get('is_attack'):
+                severity_map = {
+                    'CRITICAL': 'CRITICAL',
+                    'HIGH': 'HIGH',
+                    'MEDIUM': 'MEDIUM',
+                    'LOW': 'LOW'
+                }
+
+                anomaly = Anomaly(
+                    timestamp=result['timestamp'],
+                    severity=severity_map.get(result['threat_level'], 'MEDIUM'),
+                    category='ML_ATTACK_DETECTION',
+                    description=result['details'],
+                    source_ip=result['src_ip'],
+                    details={
+                        'ml_model': 'Improved Random Forest (90.6% accuracy)',
+                        'confidence': f"{result['confidence']:.1%}",
+                        'attack_probability': f"{result['attack_probability']:.1%}",
+                        'threat_level': result['threat_level'],
+                        'dst_ip': result['dst_ip'],
+                        'dst_port': result['dst_port'],
+                        'protocol': result['protocol'],
+                        'flow_duration': f"{result['flow_duration']:.1f}s",
+                        'packets': result['packets'],
+                        'bytes': result['bytes']
+                    }
+                )
+                self.anomalies.append(anomaly)
+
+                # Log critical and high severity attacks
+                if result['threat_level'] in ['CRITICAL', 'HIGH']:
+                    logger.warning(f"🚨 ML ATTACK DETECTED: {result['details']}")
+
+        except Exception as e:
+            logger.error(f"Error in ML attack detection: {e}")
+            # Don't crash monitoring if ML detection fails
+            pass
 
     def get_discovered_devices(self) -> List[Dict]:
         """Get list of discovered devices"""
