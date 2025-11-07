@@ -65,6 +65,21 @@ y_train = train_df['label']
 X_test = test_df.drop('label', axis=1)
 y_test = test_df['label']
 
+# CRITICAL: Remove data leakage features
+# These features reveal the answer and won't exist in real-world predictions
+leaky_features = [
+    'is_attack',        # This IS the label!
+    'attack_category',  # This reveals if it's an attack
+    'id',               # Row ID, not a feature
+    'attack_cat',       # Alternative name for attack_category
+    'Label',            # Alternative label column
+]
+for col in leaky_features:
+    if col in X_train.columns:
+        print(f"  ⚠️  Removing leaky feature: {col}")
+        X_train = X_train.drop(col, axis=1)
+        X_test = X_test.drop(col, axis=1)
+
 # Keep only numeric columns
 numeric_cols = X_train.select_dtypes(include=[np.number]).columns
 X_train = X_train[numeric_cols]
