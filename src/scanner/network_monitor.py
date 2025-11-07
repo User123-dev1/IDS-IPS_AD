@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from .secure_packet_capture import SecurePacketCapture, PacketInfo
 from .alert_rules_engine import AlertRulesEngine
+from .enhanced_alert_rules import EnhancedAlertRulesEngine
 from .improved_ml_detector import get_improved_detector
 
 logging.basicConfig(level=logging.INFO)
@@ -98,17 +99,7 @@ class NetworkMonitor:
         # Initialize logger
         self.logger = logging.getLogger(__name__)
         
-        # Initialize custom alert rules engine
-        try:
-            self.alert_rules_engine = AlertRulesEngine()
-            summary = self.alert_rules_engine.get_rule_summary()
-            self.logger.info(f"Custom alert rules loaded: {summary['enabled_rules']} rules enabled")
-        except Exception as e:
-            self.logger.warning(f"Could not load custom alert rules: {e}")
-            self.alert_rules_engine = None
-        self.protocol_history = deque(maxlen=60)  # 1 minute
-
-        # Initialize improved ML detector (90.6% accuracy model)
+        # Initialize improved ML detector (90.6% accuracy model) - FIRST
         try:
             self.improved_ml_detector = get_improved_detector()
             if self.improved_ml_detector.is_loaded:
@@ -119,6 +110,32 @@ class NetworkMonitor:
         except Exception as e:
             logger.warning(f"Could not load improved ML detector: {e}")
             self.improved_ml_detector = None
+
+        # Initialize enhanced alert rules engine with ML integration
+        try:
+            self.alert_rules_engine = EnhancedAlertRulesEngine()
+
+            # Integrate ML detector with rules engine for collaboration
+            if self.improved_ml_detector and self.improved_ml_detector.is_loaded:
+                self.alert_rules_engine.set_ml_detector(self.improved_ml_detector)
+                logger.info("✓ Alert rules engine integrated with ML detector")
+
+            summary = self.alert_rules_engine.get_rule_summary()
+            logger.info(f"Custom alert rules loaded: {summary['enabled_rules']} rules enabled "
+                       f"({summary['ml_integrated_rules']} ML-integrated)")
+        except Exception as e:
+            self.logger.warning(f"Could not load enhanced alert rules: {e}")
+            # Fallback to basic engine
+            try:
+                self.alert_rules_engine = AlertRulesEngine()
+                logger.info("Using basic alert rules engine (no ML integration)")
+            except:
+                self.alert_rules_engine = None
+
+        self.protocol_history = deque(maxlen=60)  # 1 minute
+
+        # Track combined detections
+        self.ml_results_cache = {}  # Cache ML results for correlation
 
         logger.info("NetworkMonitor initialized")
 
@@ -280,7 +297,7 @@ class NetworkMonitor:
         # IPS: Detect potential attack patterns
         self._detect_attack_patterns(packet)
 
-        # Evaluate custom alert rules first
+        # Evaluate custom alert rules with ML collaboration
         if hasattr(self, 'alert_rules_engine') and self.alert_rules_engine and self.alert_rules_engine.enabled:
             packet_data = {
                 'src_ip': packet.src_ip,
@@ -290,20 +307,36 @@ class NetworkMonitor:
                 'protocol': packet.protocol
             }
 
-            custom_alerts = self.alert_rules_engine.evaluate_packet(packet_data)
+            # Get ML result if available (from cache)
+            flow_key = (packet.src_ip, packet.dst_ip, packet.src_port, packet.dst_port)
+            ml_result = self.ml_results_cache.get(flow_key)
 
-            # Convert custom alerts to Anomaly objects
+            # Evaluate with ML collaboration
+            custom_alerts = self.alert_rules_engine.evaluate_packet(packet_data, ml_result)
+
+            # Convert custom alerts to Anomaly objects with enhanced info
             for alert in custom_alerts:
+                # Enhance description with ML info if available
+                description = f"{alert['rule_name']}: {alert['description']}"
+                if alert.get('ml_enhanced'):
+                    ml_conf = alert.get('ml_confidence', 0)
+                    description += f" [ML: {alert['detection_source']}, Confidence: {ml_conf:.0%}]"
+
                 anomaly = Anomaly(
                     timestamp=datetime.now(),
                     severity=alert['severity'],
                     category=alert['category'],
-                    description=f"{alert['rule_name']}: {alert['description']}",
+                    description=description,
                     source_ip=alert['source_ip'],
                     details={
                         'rule_id': alert['rule_id'],
                         'dest_ip': alert['dest_ip'],
-                        'dest_port': alert['dest_port']
+                        'dest_port': alert['dest_port'],
+                        'confidence': alert.get('confidence', 0.7),
+                        'detection_source': alert.get('detection_source', 'Rule'),
+                        'ml_enhanced': alert.get('ml_enhanced', False),
+                        'ml_agreement': alert.get('ml_agreement'),
+                        'ml_confidence': alert.get('ml_confidence')
                     }
                 )
                 self.anomalies.append(anomaly)
@@ -495,6 +528,18 @@ class NetworkMonitor:
 
             # Process packet through improved ML detector (flow-based)
             result = self.improved_ml_detector.process_packet(packet_data)
+
+            # Cache ML result for rule collaboration
+            if result:
+                flow_key = (packet.src_ip, packet.dst_ip, packet.src_port, packet.dst_port)
+                self.ml_results_cache[flow_key] = result
+
+                # Clean old cache entries to prevent unbounded growth (keep last 1000)
+                if len(self.ml_results_cache) > 1000:
+                    # Remove oldest 100 entries
+                    old_keys = list(self.ml_results_cache.keys())[:100]
+                    for key in old_keys:
+                        del self.ml_results_cache[key]
 
             # If flow analysis completed and attack detected, create anomaly
             if result and result.get('is_attack'):
