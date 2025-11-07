@@ -40,13 +40,14 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 # [1] Load preprocessed data
 print("\n[1/7] Loading preprocessed data...")
 try:
-    train_df = pd.read_csv('data/datasets/UNSW_NB15_training-set_preprocessed.csv')
-    test_df = pd.read_csv('data/datasets/UNSW_NB15_testing-set_preprocessed.csv')
+    # Try the actual filenames created by preprocessing
+    train_df = pd.read_csv('data/datasets/unsw-nb15_train.csv')
+    test_df = pd.read_csv('data/datasets/unsw-nb15_test.csv')
     print(f"  ✓ Training: {len(train_df):,} samples")
     print(f"  ✓ Testing: {len(test_df):,} samples")
 except FileNotFoundError as e:
     print(f"  ❌ Error: {e}")
-    print("  Run preprocessing first: python data/datasets/preprocess_unswnb15.py")
+    print("  Run preprocessing first: cd data/datasets && python preprocess_unswnb15.py")
     import sys
     sys.exit(1)
 
