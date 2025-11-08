@@ -104,7 +104,10 @@ class SecurePacketCapture:
 
     def _build_industrial_filter(self, custom_filter: Optional[str] = None) -> str:
         """
-        Build BPF filter combining industrial protocols with custom filters
+        Build BPF filter for comprehensive IDS/IPS packet capture
+
+        Captures ALL traffic for complete threat detection and visibility.
+        This ensures port scans, reconnaissance, and attacks on any port are detected.
 
         Args:
             custom_filter: Optional custom BPF filter expression
@@ -112,46 +115,36 @@ class SecurePacketCapture:
         Returns:
             str: Combined BPF filter for packet capture
         """
-        # CRITICAL: Add protocol-level filters for device discovery
+        # COMPREHENSIVE CAPTURE: All network protocols for IDS/IPS
+        # This ensures we don't miss any attacks, scans, or reconnaissance
         protocol_filters = [
-            "icmp",          # ICMP (ping) - ESSENTIAL for device discovery
-            "arp",           # ARP - ESSENTIAL for MAC address discovery
+            "icmp",          # ICMP (ping, traceroute, network diagnostics)
+            "arp",           # ARP (MAC address discovery, ARP spoofing detection)
+            "tcp",           # ALL TCP traffic (any port) - CRITICAL for port scan detection
+            "udp",           # ALL UDP traffic (any port) - CRITICAL for UDP scans
         ]
 
-        # Industrial protocol ports
-        industrial_filters = [
-            "port 502",      # Modbus TCP
-            "port 20000",    # DNP3
-            "port 2404",     # IEC 60870-5-104
-            "port 47808",    # BACnet/IP
-            "port 4840",     # OPC UA
-            "port 102",      # Siemens S7comm
-            "port 44818",    # EtherNet/IP
-            "port 2222",     # EtherNet/IP explicit
-        ]
+        # Note: With "tcp" and "udp" filters above, we capture ALL port-based traffic.
+        # This includes all industrial protocols (Modbus, DNP3, OPC-UA, etc.) and
+        # IT protocols (HTTP, SSH, RDP, etc.) automatically.
+        #
+        # Benefits of comprehensive capture:
+        # - Detect port scans on ANY port (not just 22, 80, 443)
+        # - See reconnaissance attempts on unusual ports
+        # - PORT_SCAN alerts will trigger correctly (>100 packets/min threshold)
+        # - Complete visibility into network activity
+        # - Better threat detection and incident response
 
-        # Add common IT protocols for visibility
-        standard_filters = [
-            "port 80",       # HTTP
-            "port 443",      # HTTPS
-            "port 53",       # DNS
-            "port 22",       # SSH
-            "port 23",       # Telnet
-            "port 3389",     # RDP
-            "port 445",      # SMB
-        ]
-
-        # Combine all filters (protocols + ports)
-        all_filters = protocol_filters + industrial_filters + standard_filters
-        base_filter = " or ".join(all_filters)
+        # Use protocol-level filters for comprehensive capture
+        base_filter = " or ".join(protocol_filters)
 
         # Combine with custom filter if provided
         if custom_filter:
             combined_filter = f"({base_filter}) or ({custom_filter})"
-            self.logger.debug(f"Combined filter: {combined_filter[:100]}...")
+            self.logger.info(f"Packet filter: {combined_filter}")
             return combined_filter
         else:
-            self.logger.debug(f"Using base filter: {base_filter[:100]}...")
+            self.logger.info(f"Packet filter: {base_filter} (capturing ALL traffic)")
             return base_filter
 
     def start_capture(self,
