@@ -1,5 +1,7 @@
 # IDS/IPS Quick Start Guide
 
+> **Having issues?** See **[TROUBLESHOOTING_INDEX.md](TROUBLESHOOTING_INDEX.md)** - Quick navigation to all troubleshooting guides!
+
 ## ⚡ Fastest Way to Run (3 Steps)
 
 ### Method 1: Double-Click Launcher (Easiest!)
@@ -140,11 +142,22 @@ pip install PyQt6 scapy pandas numpy scikit-learn joblib
 3. Testing from same PC (use different PC!)
 4. Monitoring not started
 
+**Diagnostic:**
+```powershell
+# Run comprehensive diagnostic
+python test_packet_capture.py
+
+# Or quick test
+python test_capture_simple.py
+```
+
 **Fix:**
 - Run as Administrator
 - Install Npcap: https://npcap.com/
 - Test from DIFFERENT computer
 - Click "Start Detection Mode" button
+
+**See:** `PACKET_CAPTURE_NOT_WORKING_FIX.md` for complete guide
 
 ### Issue 3: "Permission Denied"
 
@@ -158,16 +171,24 @@ pip install PyQt6 scapy pandas numpy scikit-learn joblib
 
 ## 📖 Documentation Index
 
+**🔍 Navigation:**
+- **`TROUBLESHOOTING_INDEX.md`** - **START HERE for issues!** Quick navigation to all guides
+
 **Setup Guides:**
 - `NEW_PC_SETUP_GUIDE.md` - Complete setup for new PC
 - `QUICK_START.md` - This file
 - `requirements.txt` - Python dependencies
 
 **Troubleshooting:**
-- `IDE_IMPORT_WARNINGS_FIX.md` - Fix red underlines in IDE
+- `PACKET_CAPTURE_NOT_WORKING_FIX.md` - Zero packets captured (comprehensive)
 - `BLANK_SCREEN_DIAGNOSTIC.md` - Fix blank network monitor
 - `WRONG_MONITORING_SYSTEM_FIX.md` - Legacy vs real-time system
+- `IDE_IMPORT_WARNINGS_FIX.md` - Fix red underlines in IDE
 - `THREAT_DETECTION_TROUBLESHOOTING.md` - Detection issues
+
+**Diagnostic Tools:**
+- `test_packet_capture.py` - Full diagnostic (checks Admin, Npcap, capture)
+- `test_capture_simple.py` - Quick packet capture test
 
 **Feature Documentation:**
 - `ALERT_RULES_ML_INTEGRATION.md` - Alert rules + ML integration
