@@ -14,7 +14,7 @@ from collections import defaultdict
 import struct
 
 try:
-    from scapy.all import sniff, IP, TCP, UDP, Raw, Ether
+    from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, Raw, Ether
     from scapy.error import Scapy_Exception
 
     SCAPY_AVAILABLE = True
@@ -105,13 +105,19 @@ class SecurePacketCapture:
     def _build_industrial_filter(self, custom_filter: Optional[str] = None) -> str:
         """
         Build BPF filter combining industrial protocols with custom filters
-        
+
         Args:
             custom_filter: Optional custom BPF filter expression
-            
+
         Returns:
             str: Combined BPF filter for packet capture
         """
+        # CRITICAL: Add protocol-level filters for device discovery
+        protocol_filters = [
+            "icmp",          # ICMP (ping) - ESSENTIAL for device discovery
+            "arp",           # ARP - ESSENTIAL for MAC address discovery
+        ]
+
         # Industrial protocol ports
         industrial_filters = [
             "port 502",      # Modbus TCP
@@ -123,7 +129,7 @@ class SecurePacketCapture:
             "port 44818",    # EtherNet/IP
             "port 2222",     # EtherNet/IP explicit
         ]
-        
+
         # Add common IT protocols for visibility
         standard_filters = [
             "port 80",       # HTTP
@@ -131,12 +137,14 @@ class SecurePacketCapture:
             "port 53",       # DNS
             "port 22",       # SSH
             "port 23",       # Telnet
+            "port 3389",     # RDP
+            "port 445",      # SMB
         ]
-        
-        # Combine all filters
-        all_filters = industrial_filters + standard_filters
+
+        # Combine all filters (protocols + ports)
+        all_filters = protocol_filters + industrial_filters + standard_filters
         base_filter = " or ".join(all_filters)
-        
+
         # Combine with custom filter if provided
         if custom_filter:
             combined_filter = f"({base_filter}) or ({custom_filter})"
@@ -291,7 +299,22 @@ class SecurePacketCapture:
             dst_port = 0
             flags = ''
 
-            if packet.haslayer(TCP):
+            if packet.haslayer(ICMP):
+                # ICMP (ping) - essential for device discovery
+                protocol = 'ICMP'
+                icmp_layer = packet[ICMP]
+                # Use ICMP type/code as pseudo-ports for tracking
+                src_port = icmp_layer.type
+                dst_port = icmp_layer.code
+                # Add ICMP type description
+                if icmp_layer.type == 8:
+                    flags = 'Echo Request (ping)'
+                elif icmp_layer.type == 0:
+                    flags = 'Echo Reply (pong)'
+                else:
+                    flags = f'Type {icmp_layer.type}'
+
+            elif packet.haslayer(TCP):
                 tcp_layer = packet[TCP]
                 protocol = 'TCP'
                 src_port = self._sanitize_port(tcp_layer.sport)
@@ -304,8 +327,11 @@ class SecurePacketCapture:
                 src_port = self._sanitize_port(udp_layer.sport)
                 dst_port = self._sanitize_port(udp_layer.dport)
 
-            # Check if it's an industrial protocol
-            protocol_name = self.INDUSTRIAL_PORTS.get(dst_port, protocol)
+            # Check if it's an industrial protocol (only for port-based protocols)
+            if protocol in ['TCP', 'UDP']:
+                protocol_name = self.INDUSTRIAL_PORTS.get(dst_port, protocol)
+            else:
+                protocol_name = protocol
 
             # Get packet size (with limit)
             size = min(len(packet), self.MAX_PACKET_SIZE)
