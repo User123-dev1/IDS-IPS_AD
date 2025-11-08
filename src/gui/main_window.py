@@ -1182,13 +1182,20 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(False)
 
     def on_scan_complete(self, devices: list):
-        """Handle scan completion - sync to all views"""
+        """Handle scan completion - sync to all views - ONLY ONLINE DEVICES"""
         self.log(f" Scan complete! Found {len(devices)} devices")
 
         # Update results table
         self.results_table.setRowCount(0)
 
+        online_count = 0
         for device in devices:
+            # CRITICAL: Only process online/active devices
+            status = device.get('status', '').lower()
+            if status != 'online':
+                continue  # Skip offline devices
+
+            online_count += 1
             row = self.results_table.rowCount()
             self.results_table.insertRow(row)
 
@@ -1206,6 +1213,8 @@ class MainWindow(QMainWindow):
             #  ADD TO NETWORK GRAPH
             if hasattr(self, 'network_graph') and self.network_graph:
                 self.network_graph.add_device(device)
+
+        self.log(f" Added {online_count} online devices (skipped {len(devices) - online_count} offline)")
 
         # Update asset count in status bar
         self.asset_count.setText(f"Assets: {self.results_table.rowCount()}")
@@ -1234,10 +1243,16 @@ class MainWindow(QMainWindow):
         )
 
     def on_device_discovered(self, device: dict):
-        """Handle device discovered from NetworkScannerTab"""
+        """Handle device discovered from NetworkScannerTab - ONLY ONLINE DEVICES"""
         # Normalize device data - scanner uses 'ip', graph expects 'ip_address'
         if 'ip' in device and 'ip_address' not in device:
             device['ip_address'] = device['ip']
+
+        # DEFENSIVE: Verify device is online (scanner tab should already filter, but double-check)
+        status = device.get('status', '').lower()
+        if status != 'online':
+            self.log(f"⊘ Skipped offline device: {device.get('ip_address', device.get('ip', 'Unknown'))} (status: {status})")
+            return
 
         # Add to assets tree
         self.add_device_to_assets(device)
@@ -1402,7 +1417,8 @@ class MainWindow(QMainWindow):
                 'status': _txt(5) or 'online'
             }
 
-            if device_data['ip_address']:
+            # Only add online devices to visualization
+            if device_data['ip_address'] and device_data['status'].lower() == 'online':
                 self.network_graph.add_device(device_data)
                 device_count += 1
 
@@ -1431,7 +1447,8 @@ class MainWindow(QMainWindow):
                 'response_time': 0.0,
                 'status': _txt(5) or 'online'
             }
-            if device_data['ip_address']:
+            # Only sync online devices to visualization
+            if device_data['ip_address'] and device_data['status'].lower() == 'online':
                 self.network_graph.add_device(device_data)
                 device_count += 1
                 self.log(f" Synced device: {device_data['ip_address']}")
@@ -1660,7 +1677,8 @@ class MainWindow(QMainWindow):
                 'status': self.results_table.item(row, 5).text() if self.results_table.item(row, 5) else 'online'
             }
 
-            if device['ip_address']:
+            # Only sync online devices
+            if device['ip_address'] and device['status'].lower() == 'online':
                 # Add to assets
                 self.add_device_to_assets(device)
 

@@ -448,13 +448,19 @@ class NetworkGraphWidget(QWidget):
         print("🎨 Scene and view created")
 
     def add_device(self, device_data: dict):
-        """Add device with debugging + auto-connect"""
+        """Add device with debugging + auto-connect - ONLY ACTIVE/ONLINE DEVICES"""
         ip = device_data.get('ip_address', 'unknown').strip()
         print(f"\n🔧 ADDING DEVICE: {ip}")
         print(f"   Data: {device_data}")
 
         if not ip:
             print("   ❌ No IP provided; skipping.")
+            return
+
+        # CRITICAL: Only add devices that are actually online/active
+        status = device_data.get('status', '').lower()
+        if status != 'online':
+            print(f"   ⊘ SKIPPED: Device {ip} is {status} (not active) - not adding to topology")
             return
 
         if ip in self.nodes:
