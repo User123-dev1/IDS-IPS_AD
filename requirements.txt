@@ -1,52 +1,94 @@
-# GUI Framework
+# ============================================================================
+# CORE REQUIREMENTS - Required for IDS/IPS to run
+# ============================================================================
+
+# GUI Framework (REQUIRED)
 PyQt6>=6.4.0
-# PyQt6-tools is optional (only needed for Qt Designer)
-# Install separately if needed: pip install pyqt6-tools
-# Note: May have dependency issues on some platforms
 
-# Data Processing and Analytics
-pandas>=2.0.0
-numpy>=1.24.0
-matplotlib>=3.7.0
-plotly>=5.15.0
-dash>=2.10.0
-
-# Machine Learning and AI
-scikit-learn>=1.3.0
-tensorflow>=2.13.0
-xgboost>=1.7.0
-
-# Network Analysis and Visualization
-networkx>=3.1
+# Network and Packet Capture (REQUIRED)
 scapy>=2.5.0
 
-# Database
-sqlalchemy>=2.0.0
-# Note: sqlite3 is built into Python, no need to install
+# Data Processing (REQUIRED)
+pandas>=2.0.0
+numpy>=1.24.0
 
-# Security and Encryption
-cryptography>=41.0.0
+# Machine Learning (REQUIRED)
+scikit-learn>=1.3.0
+joblib>=1.3.0
 
-# Web API Framework
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pydantic>=2.0.0
+# ============================================================================
+# RECOMMENDED - Enhances functionality but not strictly required
+# ============================================================================
 
-# CLI and Logging
-rich>=13.0.0
-click>=8.1.0
-tqdm>=4.65.0
+# Visualization
+matplotlib>=3.7.0
+pyqtgraph>=0.13.0
 
-# C++ Bindings
-pybind11>=2.10.0
+# Utilities
+requests>=2.31.0
+psutil>=5.9.0
 
-# Development Tools
-pytest>=7.0.0
-pytest-cov>=4.1.0
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.4.0
+# ============================================================================
+# OPTIONAL - Advanced features (comment out if not needed)
+# ============================================================================
 
-# Build Tools
-setuptools>=65.0.0
-wheel>=0.38.0
+# Advanced ML (for future enhancements, not currently used)
+# tensorflow>=2.13.0
+# xgboost>=1.7.0
+
+# Advanced visualization (not currently used)
+# plotly>=5.15.0
+# dash>=2.10.0
+# networkx>=3.1
+
+# Database (not currently used)
+# sqlalchemy>=2.0.0
+
+# Security (not currently used)
+# cryptography>=41.0.0
+
+# Web API (not currently used)
+# fastapi>=0.100.0
+# uvicorn>=0.23.0
+# pydantic>=2.0.0
+
+# ============================================================================
+# DEVELOPMENT TOOLS - Only needed for development
+# ============================================================================
+
+# Testing (uncomment for development)
+# pytest>=7.0.0
+# pytest-cov>=4.1.0
+
+# Code quality (uncomment for development)
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.4.0
+
+# ============================================================================
+# INSTALLATION INSTRUCTIONS
+# ============================================================================
+#
+# MINIMUM INSTALLATION (required only):
+#   pip install PyQt6 scapy pandas numpy scikit-learn joblib
+#
+# RECOMMENDED INSTALLATION (core + recommended):
+#   pip install -r requirements.txt
+#
+# FULL INSTALLATION (everything):
+#   Uncomment optional sections above, then:
+#   pip install -r requirements.txt
+#
+# ============================================================================
+# PLATFORM-SPECIFIC NOTES
+# ============================================================================
+#
+# WINDOWS:
+#   - Install Npcap from https://npcap.com/ (required for scapy)
+#   - Run PowerShell as Administrator when using packet capture
+#
+# LINUX:
+#   - Install libpcap: sudo apt-get install libpcap-dev
+#   - Run with sudo when using packet capture
+#
+# ============================================================================
