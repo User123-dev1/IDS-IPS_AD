@@ -37,12 +37,12 @@ print(f"Captured {counter[0]} packets")
 print("=" * 60)
 
 if counter[0] > 0:
-    print("✓ Packet capture WORKS!")
+    print("[OK] Packet capture WORKS!")
     print()
     print("Your system can capture packets correctly.")
     print("If the IDS/IPS app still doesn't work, the issue is in the application code.")
 else:
-    print("✗ Packet capture FAILED!")
+    print("[X] Packet capture FAILED!")
     print()
     print("Possible causes:")
     print("  1. Not running as Administrator")
