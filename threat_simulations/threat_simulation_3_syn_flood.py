@@ -7,6 +7,21 @@ Expected Detection: High packet rate (>500 packets/min) from single source
 
 ⚠️ WARNING: This can impact network performance! Only use in test environments!
 ⚠️ Requires administrator/root privileges (raw sockets)
+
+⚠️ IMPORTANT - DETECTION LIMITATION:
+   Due to Windows packet capture limitations, running this simulation on the SAME
+   machine as the IDS/IPS may NOT trigger detection because Windows optimizes
+   same-machine traffic and bypasses the network interface.
+
+   RECOMMENDED SETUP:
+   - Machine A: Run IDS/IPS and start monitoring
+   - Machine B: Run this script targeting Machine A's IP
+   - This ensures packets travel through the network and can be captured
+
+   If you MUST run on the same machine:
+   - The script will send packets, but they may not be visible to the IDS/IPS
+   - Check the IDS/IPS logs for "Packet Capture Stats" to verify if packets are seen
+   - Consider using a second machine for more realistic testing
 """
 
 import sys
@@ -92,6 +107,29 @@ except Exception as e:
     print(f"  ⚠️  WARNING: Cannot determine route: {e}")
     print(f"  This may cause 'MAC Address not found' errors!")
 
+# Check if targeting same machine (IDS/IPS detection limitation)
+print(f"\nChecking if target is same machine...")
+try:
+    import socket
+    local_hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(local_hostname)
+
+    if TARGET_IP == local_ip or TARGET_IP == "127.0.0.1" or TARGET_IP == "localhost":
+        print(f"  ⚠️  WARNING: Target IP ({TARGET_IP}) is THIS MACHINE ({local_ip})")
+        print(f"  ⚠️  IDS/IPS DETECTION MAY NOT WORK due to Windows packet capture limitations!")
+        print(f"\n  💡 RECOMMENDED SOLUTION:")
+        print(f"     1. Run IDS/IPS on a DIFFERENT computer (e.g., 192.168.12.100)")
+        print(f"     2. Change TARGET_IP to that computer's IP address")
+        print(f"     3. This ensures packets travel through the network for proper detection")
+        print(f"\n  If you continue anyway:")
+        print(f"     - Packets will be sent but may not be captured by IDS/IPS")
+        print(f"     - Check IDS/IPS logs for 'Packet Capture Stats' to verify")
+    else:
+        print(f"  ✓ Target is different machine (this: {local_ip}, target: {TARGET_IP})")
+        print(f"  ✓ IDS/IPS should be able to detect this attack")
+except Exception as e:
+    print(f"  ⚠️  Could not determine local IP: {e}")
+
 # Test connectivity with ICMP ping
 print(f"\nTesting connectivity to {TARGET_IP}...")
 try:
@@ -109,9 +147,8 @@ except Exception as e:
     print(f"  ⚠️  SYN flood may fail with 'MAC Address not found' error!")
     print(f"\n  💡 TIPS TO FIX:")
     print(f"     1. Change TARGET_IP to a reachable IP on your network")
-    print(f"     2. Use 127.0.0.1 (localhost) for testing")
+    print(f"     2. Run on a DIFFERENT machine than the IDS/IPS")
     print(f"     3. Ensure target IP is on the same subnet")
-    print(f"     4. Run IDS/IPS on the same machine and use 127.0.0.1")
 
 print("=" * 70)
 

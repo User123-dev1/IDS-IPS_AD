@@ -176,6 +176,34 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 # Right-click PowerShell → "Run as Administrator"
 ```
 
+### ❌ "No Detection" When Running SYN Flood on Same Machine
+
+**IMPORTANT:** When you run the SYN flood simulation from the SAME machine as the IDS/IPS, Windows may NOT capture the packets properly due to internal routing optimizations.
+
+**Why This Happens:**
+- Windows optimizes traffic sent from your IP to itself (e.g., 192.168.12.144 → 192.168.12.144)
+- These packets bypass the normal network stack and don't appear on the network interface
+- Packet capture tools (Npcap/WinPcap) can't intercept internally-routed traffic
+- The IDS/IPS literally never "sees" the packets, so it can't detect them
+
+**SOLUTION: Run from a Different Machine**
+```
+Machine A (192.168.12.144): Run IDS/IPS - Start monitoring
+Machine B (192.168.12.100): Run attack simulation - target 192.168.12.144
+```
+
+**Alternative: Use Localhost (Limited Testing)**
+```python
+# Edit threat_simulation_3_syn_flood.py, line 26:
+TARGET_IP = "127.0.0.1"
+```
+Note: Detection may still be limited on Windows due to loopback routing.
+
+**Updated Detection (v2):**
+The IDS/IPS now includes OUTGOING SYN flood detection, which can detect attacks
+originating from the local machine IF the packets are captured. However, due to
+Windows packet capture limitations, this may not work for same-machine targets.
+
 ### ❌ "MAC Address to reach destination not found" Error
 
 This error occurs in **threat_simulation_3_syn_flood.py** when Scapy cannot find the target IP on the network.
