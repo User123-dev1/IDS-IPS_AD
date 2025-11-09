@@ -210,11 +210,16 @@ class NetworkMonitor:
             self.port_stats[packet.dst_port] += 1
             self.connection_stats[connection] += 1
 
-            # Anomaly detection (if not in learning mode)
-            if not self.learning_mode and self.baseline:
-                self._detect_anomalies(packet)
+            # IPS: Attack pattern detection (ALWAYS run - independent of baseline)
+            # These detect active attacks using absolute thresholds, not baseline comparison
+            self._detect_attack_patterns(packet)
 
-            # Improved ML-based detection (flow-based analysis)
+            # IDS: Baseline anomaly detection (only if not learning and baseline exists)
+            # These detect deviations from normal behavior
+            if not self.learning_mode and self.baseline:
+                self._detect_baseline_anomalies(packet)
+
+            # ML-based detection (always run if available)
             if self.improved_ml_detector:
                 self._ml_detect_attacks(packet)
 
@@ -289,59 +294,12 @@ class NetworkMonitor:
             logger.warning(f"⚠️ SECURITY ALERT: New device detected on network: {ip}")
             logger.info(f"Action Required: Verify if device {ip} is authorized")
 
-    def _detect_anomalies(self, packet: PacketInfo):
-        """Detect anomalies in packet with enhanced IPS capabilities"""
+    def _detect_baseline_anomalies(self, packet: PacketInfo):
+        """Detect baseline-dependent anomalies (requires established baseline)"""
         if not self.baseline:
             return
 
-        # IPS: Detect potential attack patterns
-        self._detect_attack_patterns(packet)
-
-        # Evaluate custom alert rules with ML collaboration
-        if hasattr(self, 'alert_rules_engine') and self.alert_rules_engine and self.alert_rules_engine.enabled:
-            packet_data = {
-                'src_ip': packet.src_ip,
-                'dst_ip': packet.dst_ip,
-                'src_port': packet.src_port,
-                'dst_port': packet.dst_port,
-                'protocol': packet.protocol
-            }
-
-            # Get ML result if available (from cache)
-            flow_key = (packet.src_ip, packet.dst_ip, packet.src_port, packet.dst_port)
-            ml_result = self.ml_results_cache.get(flow_key)
-
-            # Evaluate with ML collaboration
-            custom_alerts = self.alert_rules_engine.evaluate_packet(packet_data, ml_result)
-
-            # Convert custom alerts to Anomaly objects with enhanced info
-            for alert in custom_alerts:
-                # Enhance description with ML info if available
-                description = f"{alert['rule_name']}: {alert['description']}"
-                if alert.get('ml_enhanced'):
-                    ml_conf = alert.get('ml_confidence', 0)
-                    description += f" [ML: {alert['detection_source']}, Confidence: {ml_conf:.0%}]"
-
-                anomaly = Anomaly(
-                    timestamp=datetime.now(),
-                    severity=alert['severity'],
-                    category=alert['category'],
-                    description=description,
-                    source_ip=alert['source_ip'],
-                    details={
-                        'rule_id': alert['rule_id'],
-                        'dest_ip': alert['dest_ip'],
-                        'dest_port': alert['dest_port'],
-                        'confidence': alert.get('confidence', 0.7),
-                        'detection_source': alert.get('detection_source', 'Rule'),
-                        'ml_enhanced': alert.get('ml_enhanced', False),
-                        'ml_agreement': alert.get('ml_agreement'),
-                        'ml_confidence': alert.get('ml_confidence')
-                    }
-                )
-                self.anomalies.append(anomaly)
-
-        # Check for unusual protocol
+        # Check for unusual protocol (baseline-dependent)
         if packet.protocol not in self.baseline.common_protocols:
             # Ignore if it's a known industrial protocol
             industrial_protocols = ['Modbus/TCP', 'DNP3', 'OPC UA', 'S7comm', 'EtherNet/IP']
@@ -367,7 +325,7 @@ class NetworkMonitor:
             )
             self.anomalies.append(anomaly)
 
-        # Check for unusual port
+        # Check for unusual port (baseline-dependent)
         if packet.dst_port not in self.baseline.common_ports:
             if packet.dst_port in [502, 20000, 4840, 102, 44818]:  # Industrial ports
                 anomaly = Anomaly(
