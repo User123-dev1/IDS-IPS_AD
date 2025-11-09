@@ -998,6 +998,11 @@ class MainWindow(QMainWindow):
         # Initial stats update
         self.refresh_dashboard_stats()
 
+        # Auto-refresh timer for real-time updates (every 2 seconds)
+        self.dashboard_refresh_timer = QTimer()
+        self.dashboard_refresh_timer.timeout.connect(self.refresh_dashboard_stats)
+        self.dashboard_refresh_timer.start(2000)  # Update every 2 seconds
+
         return widget
 
     def create_network_discovery_tab(self):
@@ -1646,6 +1651,11 @@ class MainWindow(QMainWindow):
 
         # Initial assessment
         QTimer.singleShot(1000, self.refresh_security_assessment)
+
+        # Auto-refresh timer for real-time updates (every 2 seconds)
+        self.security_refresh_timer = QTimer()
+        self.security_refresh_timer.timeout.connect(self.refresh_security_assessment)
+        self.security_refresh_timer.start(2000)  # Update every 2 seconds
 
         return security_widget
 

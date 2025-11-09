@@ -1,5 +1,27 @@
 # Dashboard Update Issue
 
+## ✅ **FIXED - Auto-Refresh Implemented**
+
+**Fix Date:** 2025-11-09
+
+**What was fixed:**
+- Added QTimer auto-refresh to **Dashboard tab** (updates every 2 seconds)
+- Added QTimer auto-refresh to **Security Assessment tab** (updates every 2 seconds)
+- Both tabs now update automatically without requiring manual "Refresh" button click
+
+**Changes made:**
+- `src/gui/main_window.py` lines 1001-1004: Dashboard auto-refresh timer
+- `src/gui/main_window.py` lines 1655-1658: Security Assessment auto-refresh timer
+
+**How to verify fix:**
+1. Pull latest code: `git pull origin claude/copy-dataset-to-repo-011CUptrG3Jgh2HjCHzGa8YY`
+2. Start IDS/IPS
+3. Open Dashboard or Security Assessment tab
+4. Run port scan from different PC
+5. Watch dashboard update automatically within 2 seconds (no manual refresh needed!)
+
+---
+
 ## 🐛 Issue Reported
 
 **User Report:**
