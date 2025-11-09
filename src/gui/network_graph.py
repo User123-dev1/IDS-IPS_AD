@@ -71,7 +71,10 @@ class NetworkNode(QGraphicsEllipseItem):
         self._setup_visual()
         self._setup_behavior()
 
-        print(f"🎨 Created node: {self.get_display_name()} at (0,0) [{self.device_type}]")
+        hostname = self.device_data.get('hostname', 'Unknown')
+        vendor = self.device_data.get('vendor', 'Unknown')
+        print(f"🎨 Created node: {self.get_display_name()} at (0,0) "
+              f"[{self.device_type}] (vendor:{vendor}, hostname:{hostname})")
 
     # -------- Behavior & interactions --------
 
@@ -301,9 +304,10 @@ class NetworkNode(QGraphicsEllipseItem):
         device_type = (self.device_data.get('device_type') or '').lower()
         vendor = (self.device_data.get('vendor') or '').lower()
         hostname = (self.device_data.get('hostname') or '').lower()
+        services = self.device_data.get('services', [])
 
-        # If scanner already set a known type
-        if device_type in self.NODE_TYPES:
+        # If scanner already set a known type (and it's not "unknown")
+        if device_type in self.NODE_TYPES and device_type != 'unknown':
             return device_type
 
         # Checkpoint
@@ -320,13 +324,31 @@ class NetworkNode(QGraphicsEllipseItem):
                 return 'vmware_vcenter'
             return 'vmware_vm'
 
-        # Cisco
+        # Cisco - Enhanced switch detection
         if 'cisco' in vendor or 'cisco' in hostname:
-            if any(k in hostname for k in ['switch', 'catalyst', '2960', '3750', '3850']):
+            # Check for switch indicators in hostname
+            if any(k in hostname for k in ['switch', 'catalyst', '2960', '3750', '3850', 'sw-', 'sw_']):
                 return 'cisco_switch'
+            # Check for firewall indicators
             if any(k in hostname for k in ['asa', 'firewall', 'fw']):
                 return 'cisco_firewall'
-            return 'cisco_router'
+            # Check for router indicators
+            if any(k in hostname for k in ['router', 'rtr', 'gateway', 'gw']):
+                return 'cisco_router'
+            # Default Cisco devices to switch if no clear indicator
+            # (Cisco is most commonly deployed as switches)
+            return 'cisco_switch'
+
+        # Siemens - Usually industrial switches or PLCs
+        if 'siemens' in vendor or 'siemens' in hostname:
+            # Siemens industrial switches (SCALANCE series)
+            if any(k in hostname for k in ['switch', 'scalance', 'ethernet']):
+                return 'switch'
+            # Siemens PLCs (S7 series)
+            if any(k in hostname for k in ['plc', 's7-', 's7_']):
+                return 'rockwell_plc'  # Use PLC type for industrial devices
+            # Default Siemens to switch (common in industrial networks)
+            return 'switch'
 
         # Rockwell PLC
         if 'rockwell' in vendor or 'allen' in vendor or 'plc' in hostname:
@@ -337,9 +359,9 @@ class NetworkNode(QGraphicsEllipseItem):
             return 'router'
 
         # Generic fallbacks by name
-        if 'router' in hostname or 'gateway' in hostname:
+        if 'router' in hostname or 'gateway' in hostname or 'gw' in hostname:
             return 'router'
-        if 'switch' in hostname:
+        if 'switch' in hostname or 'sw-' in hostname or 'sw_' in hostname:
             return 'switch'
         if 'firewall' in hostname or 'fw' in hostname:
             return 'firewall'
@@ -347,6 +369,16 @@ class NetworkNode(QGraphicsEllipseItem):
             return 'server'
         if any(k in hostname for k in ['wifi', 'wireless', 'ap']):
             return 'wireless_ap'
+
+        # Service-based classification (if hostname gives no clue)
+        # Switches typically have SNMP, telnet/SSH, and HTTP/HTTPS
+        if services:
+            service_set = set(str(s).lower() for s in services)
+            # Switch indicators: SNMP + multiple management protocols
+            if any(s in service_set for s in ['snmp', '161', '162']):
+                if any(s in service_set for s in ['telnet', 'ssh', '22', '23']):
+                    # Has both SNMP and remote access = likely a switch
+                    return 'switch'
 
         return 'unknown'
 
@@ -517,7 +549,7 @@ class NetworkGraphWidget(QWidget):
             return False
         for edge in self.edges:
             if ((edge.node1 is node1 and edge.node2 is node2) or
-                (edge.node1 is node2 and edge.node2 is node1)):
+                    (edge.node1 is node2 and edge.node2 is node1)):
                 return False  # Already connected
 
         edge = NetworkEdge(node1, node2)
@@ -526,49 +558,177 @@ class NetworkGraphWidget(QWidget):
         return True
 
     def _auto_connect(self, new_node: NetworkNode):
-        """Create realistic network connections based on actual topology"""
+        """
+        Create realistic hierarchical network connections
+
+        Topology discovery logic:
+        1. Identify device role (router, switch, firewall, device)
+        2. Find parent in network hierarchy
+        3. Create connection to appropriate parent
+        4. Build router-to-router backbone
+        5. Connect switches to routers
+        6. Connect devices to switches (or routers if no switch)
+        """
         new_ip = new_node.device_data.get('ip_address', '')
-        new_subnet = '.'.join(new_ip.split('.')[:-1]) if new_ip else ''
+        new_type = new_node.device_type
+        new_subnet = self._get_subnet(new_ip)
 
-        print(f"🔗 Connecting {new_node.get_display_name()} ({new_ip})")
+        print(f"🔗 Auto-connecting {new_node.get_display_name()} ({new_ip}) [{new_type}]")
 
-        # Candidate routers (excluding self)
-        routers = [
-            node for node in self.nodes.values()
-            if node.device_type == 'router' and node is not new_node
+        # === STEP 1: Router connections (backbone) ===
+        if 'router' in new_type or 'firewall' in new_type:
+            self._connect_router_node(new_node, new_ip, new_subnet)
+            return
+
+        # === STEP 2: Switch connections ===
+        if 'switch' in new_type:
+            self._connect_switch_node(new_node, new_ip, new_subnet)
+            return
+
+        # === STEP 3: End device connections ===
+        self._connect_end_device(new_node, new_ip, new_subnet)
+
+    def _connect_router_node(self, router_node: NetworkNode, router_ip: str, router_subnet: str):
+        """Connect routers - form backbone between different subnets"""
+        print(f"   🌐 Connecting router/firewall: {router_node.get_display_name()}")
+
+        # Find other routers, prefer cross-subnet connections
+        other_routers = [
+            (ip, node) for ip, node in self.nodes.items()
+            if node is not router_node and ('router' in node.device_type or 'firewall' in node.device_type)
         ]
 
-        if new_node.device_type == 'router':
-            # Routers connect to other routers (prefer different subnets)
-            for router in routers:
-                router_ip = router.device_data.get('ip_address', '')
-                router_subnet = '.'.join(router_ip.split('.')[:-1]) if router_ip else ''
-                if router_subnet != new_subnet:
-                    if self._create_edge(new_node, router):
-                        print(f"   🌐 Router-to-router: "
-                              f"{new_node.get_display_name()} <-> {router.get_display_name()}")
+        if not other_routers:
+            print(f"      ℹ️ First router - no connections yet")
+            return
+
+        # Connect to routers in different subnets (WAN links)
+        connected = False
+        for other_ip, other_router in other_routers:
+            other_subnet = self._get_subnet(other_ip)
+            if other_subnet != router_subnet:
+                if self._create_edge(router_node, other_router):
+                    print(f"      ✅ Router backbone: {router_ip} <-> {other_ip} (cross-subnet)")
+                    connected = True
+
+        # If no cross-subnet routers, connect to first available router
+        if not connected and other_routers:
+            first_router_ip, first_router = other_routers[0]
+            if self._create_edge(router_node, first_router):
+                print(f"      ✅ Router link: {router_ip} <-> {first_router_ip} (same-subnet)")
+
+    def _connect_switch_node(self, switch_node: NetworkNode, switch_ip: str, switch_subnet: str):
+        """Connect switch to upstream router/firewall in same subnet"""
+        print(f"   🔌 Connecting switch: {switch_node.get_display_name()}")
+
+        # Find routers/firewalls in the same subnet
+        upstream_devices = [
+            (ip, node) for ip, node in self.nodes.items()
+            if node is not switch_node
+               and self._get_subnet(ip) == switch_subnet
+               and ('router' in node.device_type or 'firewall' in node.device_type)
+        ]
+
+        if upstream_devices:
+            # Connect to first router/firewall in subnet
+            upstream_ip, upstream_node = upstream_devices[0]
+            if self._create_edge(switch_node, upstream_node):
+                print(f"      ✅ Switch → Router: {switch_ip} -> {upstream_ip}")
+                return
+
+        # Fallback: connect to any router if no same-subnet router found
+        any_router = next(
+            ((ip, node) for ip, node in self.nodes.items()
+             if node is not switch_node and 'router' in node.device_type),
+            None
+        )
+        if any_router:
+            router_ip, router_node = any_router
+            if self._create_edge(switch_node, router_node):
+                print(f"      ✅ Switch → Router (cross-subnet): {switch_ip} -> {router_ip}")
         else:
-            # Non-router devices: connect to gateway in their subnet
-            subnet_gateway: Optional[NetworkNode] = None
-            for ip, node in self.nodes.items():
-                if node is new_node:
-                    continue
-                node_subnet = '.'.join(ip.split('.')[:-1])
-                if node_subnet == new_subnet:
-                    last_octet = int(ip.split('.')[-1])
-                    if last_octet in (1, 254) or node.device_type in ('router', 'firewall'):
-                        subnet_gateway = node
-                        break
-            if subnet_gateway:
-                if self._create_edge(new_node, subnet_gateway):
-                    print(f"   🏠 Device-to-gateway: "
-                          f"{new_node.get_display_name()} -> {subnet_gateway.get_display_name()}")
-            elif routers:
-                # Fallback: connect to any router
-                closest_router = routers[0]
-                if self._create_edge(new_node, closest_router):
-                    print(f"   📡 Device-to-router: "
-                          f"{new_node.get_display_name()} -> {closest_router.get_display_name()}")
+            print(f"      ⚠️ No router found for switch")
+
+    def _connect_end_device(self, device_node: NetworkNode, device_ip: str, device_subnet: str):
+        """Connect end device to switch (preferred) or router"""
+        print(f"   📱 Connecting device: {device_node.get_display_name()}")
+
+        # Priority 1: Connect to switch in same subnet
+        switches_in_subnet = [
+            (ip, node) for ip, node in self.nodes.items()
+            if node is not device_node
+               and self._get_subnet(ip) == device_subnet
+               and 'switch' in node.device_type
+        ]
+
+        if switches_in_subnet:
+            switch_ip, switch_node = switches_in_subnet[0]
+            if self._create_edge(device_node, switch_node):
+                print(f"      ✅ Device → Switch: {device_ip} -> {switch_ip}")
+                return
+
+        # Priority 2: Connect to router/firewall in same subnet
+        routers_in_subnet = [
+            (ip, node) for ip, node in self.nodes.items()
+            if node is not device_node
+               and self._get_subnet(ip) == device_subnet
+               and ('router' in node.device_type or 'firewall' in node.device_type)
+        ]
+
+        if routers_in_subnet:
+            router_ip, router_node = routers_in_subnet[0]
+            if self._create_edge(device_node, router_node):
+                print(f"      ✅ Device → Router: {device_ip} -> {router_ip}")
+                return
+
+        # Priority 3: Connect to gateway (.1 or .254 in same subnet)
+        gateway = self._find_gateway_in_subnet(device_subnet, device_ip)
+        if gateway:
+            gw_ip, gw_node = gateway
+            if self._create_edge(device_node, gw_node):
+                print(f"      ✅ Device → Gateway: {device_ip} -> {gw_ip}")
+                return
+
+        # Priority 4: Connect to any switch
+        any_switch = next(
+            ((ip, node) for ip, node in self.nodes.items()
+             if node is not device_node and 'switch' in node.device_type),
+            None
+        )
+        if any_switch:
+            switch_ip, switch_node = any_switch
+            if self._create_edge(device_node, switch_node):
+                print(f"      ✅ Device → Switch (any): {device_ip} -> {switch_ip}")
+                return
+
+        # Priority 5: Connect to any router
+        any_router = next(
+            ((ip, node) for ip, node in self.nodes.items()
+             if node is not device_node and 'router' in node.device_type),
+            None
+        )
+        if any_router:
+            router_ip, router_node = any_router
+            if self._create_edge(device_node, router_node):
+                print(f"      ✅ Device → Router (any): {device_ip} -> {router_ip}")
+                return
+
+        print(f"      ⚠️ No upstream device found for {device_ip}")
+
+    def _get_subnet(self, ip: str) -> str:
+        """Extract subnet from IP (e.g., '192.168.1.10' -> '192.168.1')"""
+        return '.'.join(ip.split('.')[:-1]) if ip else ''
+
+    def _find_gateway_in_subnet(self, subnet: str, exclude_ip: str) -> Optional[tuple[str, NetworkNode]]:
+        """Find likely gateway (.1 or .254) in subnet"""
+        for ip, node in self.nodes.items():
+            if ip == exclude_ip:
+                continue
+            if self._get_subnet(ip) == subnet:
+                last_octet = int(ip.split('.')[-1])
+                if last_octet in (1, 254):
+                    return (ip, node)
+        return None
 
     def _discover_realistic_connections_with_switch(self):
         """Discover connections with proper switch topology (optional helper)"""
@@ -624,57 +784,128 @@ class NetworkGraphWidget(QWidget):
         print(f"✅ Created proper switch topology with {len(self.edges)} connections")
 
     def _discover_realistic_connections(self):
-        """Discover realistic connections based on subnets & gateways"""
-        print("🔍 Analyzing network for realistic connections...")
+        """
+        Rebuild all connections using hierarchical topology discovery
 
-        # Clear existing connections
+        Process:
+        1. Clear existing connections
+        2. Categorize devices by role
+        3. Build router backbone (router-to-router)
+        4. Connect switches to routers
+        5. Connect devices to switches/routers
+        """
+        print("🔍 Discovering realistic hierarchical topology...")
+
+        # Clear existing edges
         for edge in self.edges[:]:
             self.scene.removeItem(edge)
         self.edges.clear()
 
-        # Group devices by subnet; identify routers
-        subnets: Dict[str, List[tuple[str, NetworkNode]]] = {}
-        routers: List[tuple[str, NetworkNode]] = []
+        # Categorize devices
+        routers = []
+        switches = []
+        devices = []
 
         for ip, node in self.nodes.items():
-            subnet = '.'.join(ip.split('.')[:-1])
-            subnets.setdefault(subnet, []).append((ip, node))
-            if node.device_type == 'router':
+            if 'router' in node.device_type or 'firewall' in node.device_type:
                 routers.append((ip, node))
-
-        print(f"   Found {len(subnets)} subnets: {list(subnets.keys())}")
-        print(f"   Found {len(routers)} routers: {[r[0] for r in routers]}")
-
-        # Connect devices in each subnet to a gateway
-        for subnet, devices in subnets.items():
-            print(f"   🏠 Processing subnet {subnet}.0/24 ({len(devices)} devices)")
-            gateway: Optional[tuple[str, NetworkNode]] = None
-            for ip, node in devices:
-                last_octet = int(ip.split('.')[-1])
-                if last_octet in (1, 254) or node.device_type in ('router', 'firewall'):
-                    gateway = (ip, node)
-                    print(f"      🚪 Found gateway: {ip}")
-                    break
-
-            if gateway:
-                for ip, node in devices:
-                    if ip != gateway[0] and node.device_type != 'router':
-                        if self._create_edge(node, gateway[1]):
-                            print(f"      🔗 {ip} -> {gateway[0]}")
+            elif 'switch' in node.device_type:
+                switches.append((ip, node))
             else:
-                print(f"      ⚠️ No gateway found for subnet {subnet}")
+                devices.append((ip, node))
 
-        # Connect routers across different subnets (backbone)
+        print(f"   📊 Found: {len(routers)} routers, {len(switches)} switches, {len(devices)} devices")
+
+        # === PHASE 1: Router backbone (cross-subnet connections) ===
+        print("   🌐 Phase 1: Building router backbone...")
+        router_count = 0
         for i, (ip1, r1) in enumerate(routers):
+            subnet1 = self._get_subnet(ip1)
             for ip2, r2 in routers[i + 1:]:
-                if '.'.join(ip1.split('.')[:-1]) != '.'.join(ip2.split('.')[:-1]):
+                subnet2 = self._get_subnet(ip2)
+                # Connect routers in different subnets
+                if subnet1 != subnet2:
                     if self._create_edge(r1, r2):
-                        print(f"   🌐 Router backbone: {ip1} <-> {ip2}")
+                        print(f"      ✅ {ip1} <-> {ip2}")
+                        router_count += 1
+        print(f"   ✅ Created {router_count} router backbone connections")
 
+        # === PHASE 2: Switch connections to routers ===
+        print("   🔌 Phase 2: Connecting switches to routers...")
+        switch_count = 0
+        for switch_ip, switch_node in switches:
+            switch_subnet = self._get_subnet(switch_ip)
+
+            # Find router in same subnet
+            same_subnet_router = next(
+                ((ip, node) for ip, node in routers if self._get_subnet(ip) == switch_subnet),
+                None
+            )
+
+            if same_subnet_router:
+                router_ip, router_node = same_subnet_router
+                if self._create_edge(switch_node, router_node):
+                    print(f"      ✅ Switch {switch_ip} -> Router {router_ip}")
+                    switch_count += 1
+            elif routers:
+                # Fallback: connect to first router
+                router_ip, router_node = routers[0]
+                if self._create_edge(switch_node, router_node):
+                    print(f"      ✅ Switch {switch_ip} -> Router {router_ip} (cross-subnet)")
+                    switch_count += 1
+        print(f"   ✅ Connected {switch_count} switches")
+
+        # === PHASE 3: Device connections (to switches or routers) ===
+        print("   📱 Phase 3: Connecting end devices...")
+        device_count = 0
+        for device_ip, device_node in devices:
+            device_subnet = self._get_subnet(device_ip)
+
+            # Try to connect to switch in same subnet first
+            same_subnet_switch = next(
+                ((ip, node) for ip, node in switches if self._get_subnet(ip) == device_subnet),
+                None
+            )
+
+            if same_subnet_switch:
+                switch_ip, switch_node = same_subnet_switch
+                if self._create_edge(device_node, switch_node):
+                    print(f"      ✅ Device {device_ip} -> Switch {switch_ip}")
+                    device_count += 1
+                    continue
+
+            # Try router in same subnet
+            same_subnet_router = next(
+                ((ip, node) for ip, node in routers if self._get_subnet(ip) == device_subnet),
+                None
+            )
+
+            if same_subnet_router:
+                router_ip, router_node = same_subnet_router
+                if self._create_edge(device_node, router_node):
+                    print(f"      ✅ Device {device_ip} -> Router {router_ip}")
+                    device_count += 1
+                    continue
+
+            # Fallback: any switch or router
+            if switches:
+                switch_ip, switch_node = switches[0]
+                if self._create_edge(device_node, switch_node):
+                    print(f"      ✅ Device {device_ip} -> Switch {switch_ip} (any)")
+                    device_count += 1
+            elif routers:
+                router_ip, router_node = routers[0]
+                if self._create_edge(device_node, router_node):
+                    print(f"      ✅ Device {device_ip} -> Router {router_ip} (any)")
+                    device_count += 1
+
+        print(f"   ✅ Connected {device_count} devices")
+
+        # Update status
         self.status_label.setText(
-            f"Status: {len(self.nodes)} nodes, {len(self.edges)} realistic connections"
+            f"Status: {len(self.nodes)} nodes, {len(self.edges)} hierarchical connections"
         )
-        print(f"✅ Created {len(self.edges)} realistic connections")
+        print(f"✅ Topology complete: {len(self.edges)} total connections")
 
     def _update_all_edges(self):
         for edge in self.edges:
@@ -710,10 +941,14 @@ def main():
     widget.show()
 
     # Add test devices
-    widget.add_device({'ip_address': '192.168.1.1', 'hostname': 'test-firewall', 'vendor': 'Checkpoint', 'status': 'online'})
-    QTimer.singleShot(600, lambda: widget.add_device({'ip_address': '192.168.1.2', 'hostname': 'lab-switch', 'vendor': 'Cisco', 'status': 'online'}))
-    QTimer.singleShot(1200, lambda: widget.add_device({'ip_address': '192.168.1.20', 'hostname': 'srv-research', 'vendor': 'Microsoft', 'status': 'online'}))
-    QTimer.singleShot(1800, lambda: widget.add_device({'ip_address': '10.0.0.1', 'hostname': 'core-router', 'vendor': 'Cisco', 'status': 'online'}))
+    widget.add_device(
+        {'ip_address': '192.168.1.1', 'hostname': 'test-firewall', 'vendor': 'Checkpoint', 'status': 'online'})
+    QTimer.singleShot(600, lambda: widget.add_device(
+        {'ip_address': '192.168.1.2', 'hostname': 'lab-switch', 'vendor': 'Cisco', 'status': 'online'}))
+    QTimer.singleShot(1200, lambda: widget.add_device(
+        {'ip_address': '192.168.1.20', 'hostname': 'srv-research', 'vendor': 'Microsoft', 'status': 'online'}))
+    QTimer.singleShot(1800, lambda: widget.add_device(
+        {'ip_address': '10.0.0.1', 'hostname': 'core-router', 'vendor': 'Cisco', 'status': 'online'}))
 
     return app.exec()
 

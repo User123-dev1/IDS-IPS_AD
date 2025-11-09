@@ -19,6 +19,7 @@ if sys.platform == 'win32':
     try:
         # Set UTF-8 encoding for stdout/stderr on Windows
         import io
+
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     except:
@@ -52,6 +53,7 @@ from gui.ml_performance_widget import MLPerformanceWidget
 # OT Security Scanner Integration
 try:
     from gui.network_scanner_tab import NetworkScannerTab
+
     NETWORK_SCANNER_AVAILABLE = True
 except Exception as e:
     print(f"[!] Network Scanner Tab import failed: {e}")
@@ -66,6 +68,7 @@ from gui.live_dashboard import LiveDashboardWidget
 # ---- Import Scanner ----
 try:
     from scanner.network_scanner import EnterpriseNetworkScanner
+
     SCANNER_AVAILABLE = True
 except Exception as e:
     print(f"Warning: Scanner not available - {e}")
@@ -75,6 +78,7 @@ except Exception as e:
 # ---- Import Network Graph (Optional) ----
 try:
     from gui.network_graph import NetworkGraphWidget
+
     NETWORK_GRAPH_AVAILABLE = True
 except Exception as e:
     NetworkGraphWidget = None
@@ -84,6 +88,7 @@ except Exception as e:
 # ---- Import Protocol Analysis Tab (Optional) ----
 try:
     from gui.protocol_analysis_tab import ProtocolAnalysisTab
+
     PROTOCOL_TAB_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Could not import ProtocolAnalysisTab: {e}")
@@ -144,34 +149,34 @@ class SecurityScoreGauge(QWidget):
         start_angle = 90 * 16  # Start at top (12 o'clock)
         span_angle = -int((self.score / 100.0) * 360 * 16)  # Clockwise
         painter.drawArc(int(-radius), int(-radius), int(radius * 2), int(radius * 2),
-                       start_angle, span_angle)
+                        start_angle, span_angle)
 
         # Draw inner circle (background for text)
         inner_radius = radius - 40
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor("#ffffff")))
         painter.drawEllipse(int(-inner_radius), int(-inner_radius),
-                          int(inner_radius * 2), int(inner_radius * 2))
+                            int(inner_radius * 2), int(inner_radius * 2))
 
         # Draw score text
         painter.setPen(QColor("#2c3e50"))
         font = QFont("Segoe UI", int(side / 8), QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRect(int(-radius), int(-radius/2), int(radius * 2), int(radius/2)),
-                        Qt.AlignmentFlag.AlignCenter, f"{self.score}")
+        painter.drawText(QRect(int(-radius), int(-radius / 2), int(radius * 2), int(radius / 2)),
+                         Qt.AlignmentFlag.AlignCenter, f"{self.score}")
 
         # Draw "/ 100" text
         small_font = QFont("Segoe UI", int(side / 16))
         painter.setFont(small_font)
         painter.setPen(QColor("#7f8c8d"))
-        painter.drawText(QRect(int(-radius), int(radius/4), int(radius * 2), int(radius/4)),
-                        Qt.AlignmentFlag.AlignCenter, "/ 100")
+        painter.drawText(QRect(int(-radius), int(radius / 4), int(radius * 2), int(radius / 4)),
+                         Qt.AlignmentFlag.AlignCenter, "/ 100")
 
         # Draw risk level text
         painter.setPen(color)
         painter.setFont(QFont("Segoe UI", int(side / 12), QFont.Weight.Bold))
-        painter.drawText(QRect(int(-radius), int(radius/2), int(radius * 2), int(radius/3)),
-                        Qt.AlignmentFlag.AlignCenter, self.risk_level)
+        painter.drawText(QRect(int(-radius), int(radius / 2), int(radius * 2), int(radius / 3)),
+                         Qt.AlignmentFlag.AlignCenter, self.risk_level)
 
 
 # ---- ScanWorker class (ONLY ONE DEFINITION) ----
@@ -212,6 +217,9 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         self.setWindowTitle("Welore Plexes")
         self.setGeometry(100, 100, 1400, 900)
+
+        # Dictionary to store full device information (IP -> device_dict)
+        self.device_data = {}
 
         # Initialize components
         self.setup_scanner()
@@ -844,7 +852,8 @@ class MainWindow(QMainWindow):
         self.report_preview_text = QTextEdit()
         self.report_preview_text.setReadOnly(True)
         self.report_preview_text.setPlainText("Select a report type above to generate and preview reports.")
-        self.report_preview_text.setStyleSheet("background: #f8f9fa; border: 1px solid #dee2e6; font-family: monospace;")
+        self.report_preview_text.setStyleSheet(
+            "background: #f8f9fa; border: 1px solid #dee2e6; font-family: monospace;")
         preview_layout.addWidget(self.report_preview_text)
 
         preview_group.setLayout(preview_layout)
@@ -898,19 +907,22 @@ class MainWindow(QMainWindow):
 
         self.dashboard_assets_label = QLabel("Total Assets\n0")
         self.dashboard_assets_label.setFont(QFont("Segoe UI", 12))
-        self.dashboard_assets_label.setStyleSheet("color: #3498db; padding: 15px; background: #ecf0f1; border-radius: 5px;")
+        self.dashboard_assets_label.setStyleSheet(
+            "color: #3498db; padding: 15px; background: #ecf0f1; border-radius: 5px;")
         self.dashboard_assets_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(self.dashboard_assets_label)
 
         self.dashboard_active_label = QLabel("Active Devices\n0")
         self.dashboard_active_label.setFont(QFont("Segoe UI", 12))
-        self.dashboard_active_label.setStyleSheet("color: #2ecc71; padding: 15px; background: #ecf0f1; border-radius: 5px;")
+        self.dashboard_active_label.setStyleSheet(
+            "color: #2ecc71; padding: 15px; background: #ecf0f1; border-radius: 5px;")
         self.dashboard_active_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(self.dashboard_active_label)
 
         self.dashboard_vuln_label = QLabel("Vulnerabilities\n0")
         self.dashboard_vuln_label.setFont(QFont("Segoe UI", 12))
-        self.dashboard_vuln_label.setStyleSheet("color: #e74c3c; padding: 15px; background: #ecf0f1; border-radius: 5px;")
+        self.dashboard_vuln_label.setStyleSheet(
+            "color: #e74c3c; padding: 15px; background: #ecf0f1; border-radius: 5px;")
         self.dashboard_vuln_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(self.dashboard_vuln_label)
 
@@ -932,13 +944,15 @@ class MainWindow(QMainWindow):
 
         quick_scan_btn = QPushButton("🔍 Quick Network Scan")
         quick_scan_btn.setFont(QFont("Segoe UI", 11))
-        quick_scan_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 10px; border-radius: 5px; }")
+        quick_scan_btn.setStyleSheet(
+            "QPushButton { background-color: #3498db; color: white; padding: 10px; border-radius: 5px; }")
         quick_scan_btn.clicked.connect(self.start_quick_scan)
         scan_row.addWidget(quick_scan_btn)
 
         full_scan_btn = QPushButton("🔎 Full Network Scan")
         full_scan_btn.setFont(QFont("Segoe UI", 11))
-        full_scan_btn.setStyleSheet("QPushButton { background-color: #2980b9; color: white; padding: 10px; border-radius: 5px; }")
+        full_scan_btn.setStyleSheet(
+            "QPushButton { background-color: #2980b9; color: white; padding: 10px; border-radius: 5px; }")
         full_scan_btn.clicked.connect(self.start_full_scan)
         scan_row.addWidget(full_scan_btn)
 
@@ -949,13 +963,15 @@ class MainWindow(QMainWindow):
 
         monitor_btn = QPushButton("📊 Real-time Network Monitor")
         monitor_btn.setFont(QFont("Segoe UI", 11))
-        monitor_btn.setStyleSheet("QPushButton { background-color: #9b59b6; color: white; padding: 10px; border-radius: 5px; }")
+        monitor_btn.setStyleSheet(
+            "QPushButton { background-color: #9b59b6; color: white; padding: 10px; border-radius: 5px; }")
         monitor_btn.clicked.connect(self.open_network_monitor)
         monitor_row.addWidget(monitor_btn)
 
         ml_detection_btn = QPushButton("🤖 ML Anomaly Detection")
         ml_detection_btn.setFont(QFont("Segoe UI", 11))
-        ml_detection_btn.setStyleSheet("QPushButton { background-color: #8e44ad; color: white; padding: 10px; border-radius: 5px; }")
+        ml_detection_btn.setStyleSheet(
+            "QPushButton { background-color: #8e44ad; color: white; padding: 10px; border-radius: 5px; }")
         ml_detection_btn.clicked.connect(self.open_ml_detection)
         monitor_row.addWidget(ml_detection_btn)
 
@@ -966,13 +982,15 @@ class MainWindow(QMainWindow):
 
         export_btn = QPushButton("📄 Export Results")
         export_btn.setFont(QFont("Segoe UI", 11))
-        export_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 10px; border-radius: 5px; }")
+        export_btn.setStyleSheet(
+            "QPushButton { background-color: #27ae60; color: white; padding: 10px; border-radius: 5px; }")
         export_btn.clicked.connect(self.export_scan_results)
         report_row.addWidget(export_btn)
 
         visualize_btn = QPushButton("🌐 Network Visualization")
         visualize_btn.setFont(QFont("Segoe UI", 11))
-        visualize_btn.setStyleSheet("QPushButton { background-color: #16a085; color: white; padding: 10px; border-radius: 5px; }")
+        visualize_btn.setStyleSheet(
+            "QPushButton { background-color: #16a085; color: white; padding: 10px; border-radius: 5px; }")
         visualize_btn.clicked.connect(self.open_visualization)
         report_row.addWidget(visualize_btn)
 
@@ -1092,7 +1110,6 @@ class MainWindow(QMainWindow):
 
         self.scan_log = QTextEdit()
 
-
     def log(self, message):
         """Log message to console and GUI scan log"""
         # Print to console with encoding error handling (for Windows)
@@ -1123,7 +1140,7 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
         except:
             pass
-    
+
     def get_discovered_devices(self):
         """Return list of discovered devices for protocol analysis"""
         devices = []
@@ -1207,7 +1224,7 @@ class MainWindow(QMainWindow):
             # Add to results table
             self.results_table.setItem(row, 0, QTableWidgetItem(device.get('ip_address', '')))
             self.results_table.setItem(row, 1, QTableWidgetItem(device.get('hostname', '')))
-            self.results_table.setItem(row, 2, QTableWidgetItem(device.get('mac', '')))
+            self.results_table.setItem(row, 2, QTableWidgetItem(device.get('mac_address', '')))
             self.results_table.setItem(row, 3, QTableWidgetItem(device.get('vendor', 'Unknown')))
             self.results_table.setItem(row, 4, QTableWidgetItem(device.get('device_type', 'unknown')))
             self.results_table.setItem(row, 5, QTableWidgetItem(device.get('status', 'online')))
@@ -1256,7 +1273,8 @@ class MainWindow(QMainWindow):
         # DEFENSIVE: Verify device is online (scanner tab should already filter, but double-check)
         status = device.get('status', '').lower()
         if status != 'online':
-            self.log(f"⊘ Skipped offline device: {device.get('ip_address', device.get('ip', 'Unknown'))} (status: {status})")
+            self.log(
+                f"⊘ Skipped offline device: {device.get('ip_address', device.get('ip', 'Unknown'))} (status: {status})")
             return
 
         # Add to assets tree
@@ -1335,6 +1353,8 @@ class MainWindow(QMainWindow):
                 existing_item.setText(0, hostname)
                 existing_item.setText(1, device_type)
                 existing_item.setText(3, status)
+                # Update stored device data
+                self.device_data[ip] = device
                 return
 
         # Create new tree item
@@ -1348,6 +1368,12 @@ class MainWindow(QMainWindow):
 
         # Add to tree
         self.assets_tree.addTopLevelItem(item)
+
+        # Store complete device data for later retrieval
+        self.device_data[ip] = device
+        # DEBUG: Log what we're storing
+        self.log(
+            f"DEBUG: Stored device {ip}: mac_address={device.get('mac_address', 'N/A')}, vendor={device.get('vendor', 'N/A')}")
 
     def on_scan_error(self, error_msg: str):
         """Handle scan errors"""
@@ -1556,7 +1582,8 @@ class MainWindow(QMainWindow):
 
         self.critical_vuln_label = QLabel("Critical\n0")
         self.critical_vuln_label.setFont(QFont("Segoe UI", 12))
-        self.critical_vuln_label.setStyleSheet("color: #e74c3c; padding: 15px; background: #fadbd8; border-radius: 5px;")
+        self.critical_vuln_label.setStyleSheet(
+            "color: #e74c3c; padding: 15px; background: #fadbd8; border-radius: 5px;")
         self.critical_vuln_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vuln_layout.addWidget(self.critical_vuln_label)
 
@@ -1826,7 +1853,8 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'start_enterprise_scan'):
                 QTimer.singleShot(500, self.start_enterprise_scan)
             else:
-                QMessageBox.information(self, "Quick Scan", "Please configure scan parameters in the Network Discovery tab")
+                QMessageBox.information(self, "Quick Scan",
+                                        "Please configure scan parameters in the Network Discovery tab")
 
         except Exception as e:
             self.log(f"Error starting quick scan: {e}")
@@ -1867,7 +1895,7 @@ class MainWindow(QMainWindow):
 
                 # Check for various possible tab names
                 if ('monitor' in tab_text.lower() and 'network' in tab_text.lower()) or \
-                   'network monitor' in tab_text.lower():
+                        'network monitor' in tab_text.lower():
                     self.central_tabs.setCurrentIndex(i)
                     self.log(f"📊 Opened Network Monitor (tab {i}: '{tab_text}')")
                     if hasattr(self, 'dashboard_activity_text'):
@@ -1883,7 +1911,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Network Monitor",
                 "Network Monitor tab not found.\n\n"
-                f"Available tabs:\n" + "\n".join(f"  {i+1}. {tab}" for i, tab in enumerate(available_tabs))
+                f"Available tabs:\n" + "\n".join(f"  {i + 1}. {tab}" for i, tab in enumerate(available_tabs))
             )
 
         except Exception as e:
@@ -1915,7 +1943,7 @@ class MainWindow(QMainWindow):
                 self,
                 "ML Detection",
                 "ML Anomaly Detection tab not found.\n\n"
-                f"Available tabs:\n" + "\n".join(f"  {i+1}. {tab}" for i, tab in enumerate(available_tabs))
+                f"Available tabs:\n" + "\n".join(f"  {i + 1}. {tab}" for i, tab in enumerate(available_tabs))
             )
 
         except Exception as e:
@@ -1952,7 +1980,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Visualization",
                 "Network Visualization tab not found.\n\n"
-                f"Available tabs:\n" + "\n".join(f"  {i+1}. {tab}" for i, tab in enumerate(available_tabs))
+                f"Available tabs:\n" + "\n".join(f"  {i + 1}. {tab}" for i, tab in enumerate(available_tabs))
             )
 
         except Exception as e:
@@ -1988,7 +2016,8 @@ class MainWindow(QMainWindow):
                     device = {
                         'ip': self.results_table.item(row, 0).text() if self.results_table.item(row, 0) else '',
                         'hostname': self.results_table.item(row, 1).text() if self.results_table.item(row, 1) else '',
-                        'device_type': self.results_table.item(row, 4).text() if self.results_table.item(row, 4) else '',
+                        'device_type': self.results_table.item(row, 4).text() if self.results_table.item(row,
+                                                                                                         4) else '',
                     }
                     device_data.append(device)
 
@@ -2155,9 +2184,9 @@ class MainWindow(QMainWindow):
 
         # Deduct points based on severity
         score -= critical * 20  # Critical: -20 points each
-        score -= high * 10      # High: -10 points each
-        score -= medium * 5     # Medium: -5 points each
-        score -= low * 2        # Low: -2 points each
+        score -= high * 10  # High: -10 points each
+        score -= medium * 5  # Medium: -5 points each
+        score -= low * 2  # Low: -2 points each
 
         # Ensure score is between 0 and 100
         return max(0, min(100, score))
@@ -2459,7 +2488,7 @@ COMPLIANCE FRAMEWORKS:
                 asset = {
                     'ip_address': ip,
                     'hostname': hostname_input.text().strip() or ip,
-                    'mac': mac_input.text().strip() or 'Unknown',
+                    'mac_address': mac_input.text().strip() or 'Unknown',
                     'vendor': vendor_input.text().strip() or 'Unknown',
                     'device_type': device_type_combo.currentText(),
                     'status': status_combo.currentText()
@@ -2494,6 +2523,12 @@ COMPLIANCE FRAMEWORKS:
             if not hasattr(self, 'inventory_asset_table'):
                 return
 
+            # DEBUG: Check device_data contents
+            self.log(f"DEBUG: device_data has {len(self.device_data)} entries")
+            if self.device_data:
+                sample_ip = list(self.device_data.keys())[0]
+                self.log(f"DEBUG: Sample device keys: {list(self.device_data[sample_ip].keys())}")
+
             # Clear existing table
             self.inventory_asset_table.setRowCount(0)
 
@@ -2515,8 +2550,11 @@ COMPLIANCE FRAMEWORKS:
                     # Populate columns
                     self.inventory_asset_table.setItem(row, 0, QTableWidgetItem(ip_address))
                     self.inventory_asset_table.setItem(row, 1, QTableWidgetItem(hostname))
-                    self.inventory_asset_table.setItem(row, 2, QTableWidgetItem("Unknown"))  # MAC
-                    self.inventory_asset_table.setItem(row, 3, QTableWidgetItem("Unknown"))  # Vendor
+                    # Get MAC address from stored device data
+                    mac_address = self.device_data.get(ip_address, {}).get('mac_address', 'Unknown')
+                    self.inventory_asset_table.setItem(row, 2, QTableWidgetItem(mac_address))
+                    vendor = self.device_data.get(ip_address, {}).get('vendor', 'Unknown')
+                    self.inventory_asset_table.setItem(row, 3, QTableWidgetItem(vendor))
                     self.inventory_asset_table.setItem(row, 4, QTableWidgetItem(device_type))
                     self.inventory_asset_table.setItem(row, 5, QTableWidgetItem(status))
                     self.inventory_asset_table.setItem(row, 6, QTableWidgetItem(
@@ -2723,28 +2761,28 @@ COMPLIANCE FRAMEWORKS:
             from PyQt6.QtWidgets import QApplication, QMessageBox, QTableWidgetItem
             from PyQt6.QtGui import QColor
             import ipaddress
-            
+
             self.log("[*] Starting FULL SUBNET enterprise scan...")
-            
+
             subnet_text = self.subnet_input.toPlainText().strip()
             if not subnet_text:
                 subnet_text = "192.168.12.0/24"
                 self.subnet_input.setPlainText(subnet_text)
-            
+
             self.scan_button.setEnabled(False)
             if hasattr(self, 'stop_scan_button'):
                 self.stop_scan_button.setEnabled(True)
-            
+
             if hasattr(self, 'results_table'):
                 self.results_table.setRowCount(0)
-            
+
             if hasattr(self, 'scan_progress'):
                 self.scan_progress.setValue(0)
             if hasattr(self, 'scan_status'):
                 self.scan_status.setText("Generating IP list...")
-            
+
             scanner = EnterpriseNetworkScanner()
-            
+
             # SCAN FULL SUBNET - Find ALL devices!
             scan_ips = []
             subnet_lines = subnet_text.splitlines()
@@ -2758,85 +2796,89 @@ COMPLIANCE FRAMEWORKS:
                             scan_ips.append(str(ip))
                     except Exception as e:
                         self.log(f"[ERROR] Invalid subnet {line}: {e}")
-            
+
             if not scan_ips:
                 QMessageBox.warning(self, "No IPs", "No valid IPs to scan")
                 self.scan_button.setEnabled(True)
                 return
-            
+
             total = len(scan_ips)
             online_count = 0
-            
+
             self.log(f"[*] Scanning {total} IPs in {subnet_text}...")
             self.log(f"[*] This will find ALL devices on the network...")
-            
+
             # PARALLEL SCANNING - Much faster!
             from concurrent.futures import ThreadPoolExecutor, as_completed
             import threading
-            
+
             max_workers = 50  # Scan 50 IPs simultaneously
             completed = 0
             results_lock = threading.Lock()
-            
+
             def scan_single_ip(ip):
                 """Scan a single IP and return result"""
                 try:
                     return scanner.scan_target(ip)
                 except Exception as e:
                     return {'status': 'offline', 'ip': ip}
-            
+
             self.log(f"[*] Using {max_workers} parallel workers for faster scanning...")
-            
+
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all scan jobs
                 future_to_ip = {executor.submit(scan_single_ip, ip): ip for ip in scan_ips}
-                
+
                 # Process results as they complete
                 for future in as_completed(future_to_ip):
                     ip = future_to_ip[future]
-                    
+
                     with results_lock:
                         completed += 1
                         progress = int((completed / total) * 100)
-                        
+
                         if hasattr(self, 'scan_progress'):
                             self.scan_progress.setValue(progress)
-                        
+
                         if hasattr(self, 'scan_status'):
                             self.scan_status.setText(f"Scanned {completed}/{total} IPs... ({online_count} found)")
-                    
+
                     try:
                         result = future.result()
-                        
+
                         if result['status'] == 'online':
                             with results_lock:
                                 online_count += 1
-                                
+
                                 if hasattr(self, 'results_table'):
                                     row = self.results_table.rowCount()
                                     self.results_table.insertRow(row)
-                                    
+
                                     self.results_table.setItem(row, 0, QTableWidgetItem(result['ip']))
                                     self.results_table.setItem(row, 1, QTableWidgetItem(result['hostname']))
                                     self.results_table.setItem(row, 2, QTableWidgetItem(result['mac_address']))
-                                    
+
                                     vendor_item = QTableWidgetItem(result['vendor'])
-                                    if result['vendor'] in ['Rockwell Automation', 'Siemens', 'Schneider Electric', 'ABB', 'Mitsubishi']:
+                                    if result['vendor'] in ['Rockwell Automation', 'Siemens', 'Schneider Electric',
+                                                            'ABB', 'Mitsubishi']:
                                         vendor_item.setBackground(QColor(155, 89, 182))
                                         vendor_item.setForeground(QColor(255, 255, 255))
                                     self.results_table.setItem(row, 3, vendor_item)
-                                    
+
                                     # INTELLIGENT DEVICE TYPE DETECTION
                                     vendor = result['vendor'].lower()
                                     hostname = result['hostname'].lower()
                                     device_type = "IT"
-                                    
+
                                     if result['ot_protocols']:
                                         device_type = "OT/ICS"
-                                    
-                                    if any(x in vendor for x in ['rockwell', 'allen-bradley', 'siemens', 'schneider', 'mitsubishi', 'omron', 'abb', 'ge fanuc']):
+
+                                    if any(x in vendor for x in
+                                           ['rockwell', 'allen-bradley', 'siemens', 'schneider', 'mitsubishi', 'omron',
+                                            'abb', 'ge fanuc']):
                                         device_type = "PLC"
-                                    elif any(x in vendor for x in ['yaskawa', 'danfoss', 'delta', 'abb drive']) or 'vfd' in hostname:
+                                    elif any(x in vendor for x in
+                                             ['yaskawa', 'danfoss', 'delta', 'abb drive']) or 'vfd' in hostname:
                                         device_type = "VFD"
                                     elif 'hmi' in hostname or 'wonderware' in vendor or 'advantech' in vendor:
                                         device_type = "HMI"
@@ -2846,15 +2888,17 @@ COMPLIANCE FRAMEWORKS:
                                         device_type = "Router"
                                     elif 'switch' in hostname or 'sw-' in hostname:
                                         device_type = "Switch"
-                                    elif any(x in vendor for x in ['fortinet', 'palo alto', 'check point', 'sophos', 'watchguard']):
+                                    elif any(x in vendor for x in
+                                             ['fortinet', 'palo alto', 'check point', 'sophos', 'watchguard']):
                                         device_type = "Firewall"
-                                    elif any(x in hostname for x in ['server', 'srv', 'dc-', 'sql', 'web', 'app', 'research']):
+                                    elif any(x in hostname for x in
+                                             ['server', 'srv', 'dc-', 'sql', 'web', 'app', 'research']):
                                         device_type = "Server"
                                     elif any(x in hostname for x in ['pc-', 'ws-', 'win', 'workstation']):
                                         device_type = "Workstation"
-                                    
+
                                     type_item = QTableWidgetItem(device_type)
-                                    
+
                                     if device_type in ["PLC", "OT/ICS", "VFD", "HMI", "SCADA"]:
                                         type_item.setBackground(QColor(231, 76, 60))
                                         type_item.setForeground(QColor(255, 255, 255))
@@ -2864,18 +2908,18 @@ COMPLIANCE FRAMEWORKS:
                                     elif device_type == "Server":
                                         type_item.setBackground(QColor(46, 204, 113))
                                         type_item.setForeground(QColor(255, 255, 255))
-                                    
+
                                     self.results_table.setItem(row, 4, type_item)
-                                
+
                                 log_msg = f"[{online_count}] {result['ip']} - {result['vendor']} [{device_type}]"
                                 if result['ot_protocols']:
                                     protocols = ', '.join([p['protocol'] for p in result['ot_protocols']])
                                     log_msg += f" [OT: {protocols}]"
                                     self.log(log_msg)
-                                    
+
                                     # Force GUI update
                                     QApplication.processEvents()
-                        
+
                                 # Update GUI after every device found
                     except Exception as e:
                         pass
@@ -2883,16 +2927,15 @@ COMPLIANCE FRAMEWORKS:
                 self.scan_progress.setValue(100)
             if hasattr(self, 'scan_status'):
                 self.scan_status.setText(f"Complete! Found {online_count} devices")
-            
+
             self.log(f"[OK] Scan complete! Found {online_count} online devices out of {total} IPs scanned")
-            
+
             self.scan_button.setEnabled(True)
             if hasattr(self, 'stop_scan_button'):
                 self.stop_scan_button.setEnabled(False)
-            
+
             if online_count > 0:
                 msg = f"Found {online_count} online devices!"
-
 
                 msg += "Device types detected:"
 
@@ -2902,12 +2945,11 @@ COMPLIANCE FRAMEWORKS:
 
                 msg += "- Servers (Green)"
 
-
                 msg += "Check Results Table for details."
                 QMessageBox.information(self, "Scan Complete", msg)
             else:
                 QMessageBox.warning(self, "Scan Complete", f"No devices found in {subnet_text}")
-            
+
         except Exception as e:
             self.log(f"[ERROR] Scan failed: {e}")
             import traceback
@@ -2969,7 +3011,7 @@ DEVICE TYPE BREAKDOWN
 DISCOVERED DEVICES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {'Hostname':<25} {'IP Address':<15} {'Type':<15} {'Status':<10}
-{'─'*70}
+{'─' * 70}
 """
 
             for i in range(min(total_devices, 50)):  # Limit to first 50
@@ -3079,15 +3121,18 @@ ASSET CLASSIFICATION
 OT/ICS Assets ({ot_devices}):
 """
 
-            for asset in [a for a in assets_list if any(x in a['type'].lower() for x in ['plc', 'hmi', 'scada', 'vfd', 'rtu', 'ot', 'ics'])]:
+            for asset in [a for a in assets_list if
+                          any(x in a['type'].lower() for x in ['plc', 'hmi', 'scada', 'vfd', 'rtu', 'ot', 'ics'])]:
                 report += f"  • {asset['hostname']:30s} {asset['ip']:15s} [{asset['type']}]\n"
 
             report += f"\nNetwork Infrastructure ({network_devices}):\n"
-            for asset in [a for a in assets_list if any(x in a['type'].lower() for x in ['router', 'switch', 'firewall'])]:
+            for asset in [a for a in assets_list if
+                          any(x in a['type'].lower() for x in ['router', 'switch', 'firewall'])]:
                 report += f"  • {asset['hostname']:30s} {asset['ip']:15s} [{asset['type']}]\n"
 
             report += f"\nIT Assets ({it_devices}):\n"
-            for asset in [a for a in assets_list if any(x in a['type'].lower() for x in ['server', 'workstation', 'it'])]:
+            for asset in [a for a in assets_list if
+                          any(x in a['type'].lower() for x in ['server', 'workstation', 'it'])]:
                 report += f"  • {asset['hostname']:30s} {asset['ip']:15s} [{asset['type']}]\n"
 
             report += f"""
@@ -3310,7 +3355,7 @@ AVAILABILITY STATUS
 DEVICE STATUS DETAILS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {'Device':<30} {'IP Address':<15} {'Status':<10}
-{'─'*60}
+{'─' * 60}
 """
 
             for i in range(total_devices):

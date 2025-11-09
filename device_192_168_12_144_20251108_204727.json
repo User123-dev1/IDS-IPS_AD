@@ -1,0 +1,204 @@
+{
+  "export_time": "2025-11-08T20:47:27.394693",
+  "device_info": {
+    "ip_address": "192.168.12.144",
+    "mac_address": null,
+    "hostname": "Research01.scepces.com",
+    "vendor": "Unknown",
+    "classification": {
+      "type": "IT Device (Server, Workstation, or Network Equipment)",
+      "category": "Information Technology",
+      "is_ot": false,
+      "confidence": "60-70%",
+      "color": "#3498db"
+    },
+    "protocols": [
+      "ICMP",
+      "TCP",
+      "UDP"
+    ],
+    "ports": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      49671,
+      49887,
+      51241,
+      51270,
+      51937,
+      53138,
+      54290,
+      54292,
+      54883,
+      54954,
+      55135,
+      55250,
+      55251,
+      55252,
+      55940,
+      57775,
+      59340,
+      59405,
+      59655,
+      60359,
+      61659,
+      63255,
+      64245,
+      64287,
+      64288
+    ],
+    "packet_count": 1328,
+    "byte_count": 4677113,
+    "connection_count": 62,
+    "first_seen": "2025-11-08T20:45:14.107777",
+    "last_seen": "2025-11-08T20:47:04.550816"
+  },
+  "threat_assessment": {
+    "threats": [
+      {
+        "timestamp": "2025-11-08T20:46:03.252676",
+        "severity": "CRITICAL",
+        "category": "PORT_SCAN",
+        "description": "\ud83d\udea8 ATTACK DETECTED: Potential port scanning from 192.168.12.144"
+      },
+      {
+        "timestamp": "2025-11-08T20:46:47.499022",
+        "severity": "CRITICAL",
+        "category": "DOS_ATTACK",
+        "description": "\ud83d\udea8 ATTACK DETECTED: Potential DoS/DDoS attack from 192.168.12.144"
+      },
+      {
+        "timestamp": "2025-11-08T20:47:03.540256",
+        "severity": "CRITICAL",
+        "category": "PORT_SCAN",
+        "description": "\ud83d\udea8 ATTACK DETECTED: Potential port scanning from 192.168.12.144"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:14.107780",
+        "severity": "HIGH",
+        "category": "NEW_DEVICE",
+        "description": "\ud83c\udd95 NEW DEVICE CONNECTED: 192.168.12.144 - Not in baseline, requires investigation"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:14.109328",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 44.218.59.95:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:14.152531",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 18.97.36.67:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:17.495406",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 172.183.7.192:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:19.279413",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 20.189.173.9:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:25.838555",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 18.97.36.68:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:34.281797",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 20.42.65.90:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:38.910572",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 140.82.114.26:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:47.927501",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 23.221.253.243:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:57.291578",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 20.135.4.173:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:45:57.965361",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 72.145.35.109:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:46:00.274314",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 20.60.225.225:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:46:36.195683",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 20.209.69.161:443"
+      },
+      {
+        "timestamp": "2025-11-08T20:46:47.754197",
+        "severity": "HIGH",
+        "category": "EXTERNAL_CONNECTION",
+        "description": "\u26a0\ufe0f Suspicious external connection from 192.168.12.144 to 13.89.179.13:443"
+      }
+    ],
+    "threat_level": {
+      "level": "\ud83d\udd34 CRITICAL - 3 Critical Threat(s)",
+      "color": "#e74c3c"
+    },
+    "recommendations": [
+      "\u26a0\ufe0f URGENT: Investigate CRITICAL threats immediately",
+      "Consider isolating this device until threats are resolved",
+      "Block source IP performing port scanning",
+      "Block source IP performing port scanning"
+    ]
+  }
+}
