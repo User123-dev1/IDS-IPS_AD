@@ -14,8 +14,11 @@ from PyQt6.QtGui import QColor, QFont
 from datetime import datetime
 import sys
 import os
+import logging
 from scanner.network_monitor import NetworkMonitor
 import socket
+
+logger = logging.getLogger(__name__)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -351,14 +354,26 @@ class DeviceDetailsDialog(QDialog):
         device_ip = self.device_data['ip_address']
         threats = []
 
+        # Debug logging
+        logger.debug(f"Looking for threats for device: {device_ip}")
+        logger.debug(f"Total anomalies in list: {len(self.anomalies_list)}")
+
         for anomaly in self.anomalies_list:
-            if anomaly.get('source_ip') == device_ip:
-                threats.append({
+            anomaly_src = anomaly.get('source_ip', '')
+            logger.debug(f"Checking anomaly: src={anomaly_src}, category={anomaly.get('category')}")
+
+            if anomaly_src == device_ip:
+                threat = {
                     'timestamp': anomaly.get('timestamp', ''),
                     'severity': anomaly.get('severity', 'UNKNOWN'),
                     'category': anomaly.get('category', 'UNKNOWN'),
-                    'description': anomaly.get('description', '')
-                })
+                    'description': anomaly.get('description', ''),
+                    'details': anomaly.get('details', {})
+                }
+                threats.append(threat)
+                logger.debug(f"✓ Matched threat: {threat['category']} - {threat['severity']}")
+
+        logger.debug(f"Found {len(threats)} threats for {device_ip}")
 
         # Sort by severity (CRITICAL first)
         severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
@@ -811,8 +826,14 @@ class LiveDashboardWidget(QWidget):
         self.monitoring_stopped.emit()
 
     def update_display(self):
-        """Update dashboard display"""
+        """Update dashboard display with keepalive check"""
         if not self.monitor or not self.monitor.is_monitoring:
+            return
+
+        # Ensure timer is still running (防止idle timeout)
+        if self.update_timer and not self.update_timer.isActive():
+            logger.warning("Update timer stopped unexpectedly - restarting")
+            self.update_timer.start(1000)
             return
 
         try:

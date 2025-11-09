@@ -556,23 +556,34 @@ class NetworkMonitor:
                 logger.critical(f"🚨 IPS ALERT: OT protocol access from {src_ip} to critical port {packet.dst_port}")
 
         # 4. DoS/DDoS Detection (extremely high packet rate)
+        # NOTE: Skip DoS alert if a more specific attack (brute force, port scan, OT attack) is already detected
+        # This prevents brute force attacks from being misclassified as DoS
         if tracker['count'] > 500:  # More than 500 packets per minute
-            # De-duplicate: Only alert once per minute per source IP
-            if self._should_create_alert(src_ip, 'DOS_ATTACK', interval_seconds=60):
-                anomaly = Anomaly(
-                    timestamp=datetime.now(),
-                    severity='CRITICAL',
-                    category='DOS_ATTACK',
-                    description=f"🚨 ATTACK DETECTED: Potential DoS/DDoS attack from {src_ip}",
-                    source_ip=src_ip,
-                    details={
-                        'packet_rate': tracker['count'],
-                        'attack_type': 'Denial of Service (DoS)',
-                        'action': 'BLOCK IMMEDIATELY - Network flooding detected'
-                    }
-                )
-                self.anomalies.append(anomaly)
-                logger.critical(f"🚨 IPS ALERT: DoS attack detected from {src_ip}")
+            # Check if we've already detected a more specific attack from this IP
+            auth_in_progress = False
+            if hasattr(self, '_auth_attempt_tracker') and src_ip in self._auth_attempt_tracker:
+                auth_tracker = self._auth_attempt_tracker[src_ip]
+                if auth_tracker['count'] > 20:  # Brute force is active
+                    auth_in_progress = True
+
+            # Only trigger DoS if no brute force/auth attack is detected
+            if not auth_in_progress:
+                # De-duplicate: Only alert once per minute per source IP
+                if self._should_create_alert(src_ip, 'DOS_ATTACK', interval_seconds=60):
+                    anomaly = Anomaly(
+                        timestamp=datetime.now(),
+                        severity='CRITICAL',
+                        category='DOS_ATTACK',
+                        description=f"🚨 ATTACK DETECTED: Potential DoS/DDoS attack from {src_ip}",
+                        source_ip=src_ip,
+                        details={
+                            'packet_rate': tracker['count'],
+                            'attack_type': 'Denial of Service (DoS)',
+                            'action': 'BLOCK IMMEDIATELY - Network flooding detected'
+                        }
+                    )
+                    self.anomalies.append(anomaly)
+                    logger.critical(f"🚨 IPS ALERT: DoS attack detected from {src_ip}")
 
         # 5. Malware C2 Communication Detection (unusual external connections)
         if not hasattr(self, '_known_external_ips'):
