@@ -75,7 +75,7 @@ class EnterpriseNetworkScanner:
         result = {
             'ip': ip,
             'hostname': self._get_hostname(ip),
-            'mac_address': self._get_mac(ip),
+            'mac_address': 'Unknown',  # Will be populated after ping
             'vendor': 'Unknown',
             'status': 'unknown',
             'open_ports': [],
@@ -84,16 +84,25 @@ class EnterpriseNetworkScanner:
             'services': []
         }
 
-        # Get vendor from MAC
-        if result['mac_address'] != 'Unknown':
-            result['vendor'] = self.get_vendor_from_mac(result['mac_address'])
-
-        # Check if host is alive
+        # Check if host is alive FIRST (this populates ARP table)
         if not self._is_alive(ip):
             result['status'] = 'offline'
+            # Still try to get MAC even for offline hosts (might be in ARP cache)
+            result['mac_address'] = self._get_mac(ip)
+            if result['mac_address'] != 'Unknown':
+                result['vendor'] = self.get_vendor_from_mac(result['mac_address'])
             return result
 
         result['status'] = 'online'
+
+        # Get MAC address (ARP table should be populated from ping above)
+        result['mac_address'] = self._get_mac(ip)
+
+        # Get vendor from MAC
+        if result['mac_address'] != 'Unknown':
+            result['vendor'] = self.get_vendor_from_mac(result['mac_address'])
+        else:
+            print(f"  [!] Warning: Could not determine MAC address for {ip}")
 
         # Scan ports
         print(f"  [*] Scanning ports...")
@@ -363,20 +372,99 @@ class EnterpriseNetworkScanner:
             return ip
     
     def _get_mac(self, ip: str) -> str:
-        """Get MAC address from ARP table"""
+        """Get MAC address from ARP table with improved detection
+
+        Note: This should be called AFTER ping/connectivity check to ensure
+        ARP table is populated. However, it includes a fallback ping if needed.
+        """
+        import time
+        import re
+
+        # Try method 1: Standard ARP command (works on Windows and Linux)
+        mac_address = None
         try:
-            output = subprocess.check_output(['arp', '-a', ip], 
-                                           universal_newlines=True, timeout=2)
+            if platform.system().lower() == 'windows':
+                # Windows: arp -a
+                output = subprocess.check_output(['arp', '-a'],
+                                               universal_newlines=True,
+                                               timeout=2)
+            else:
+                # Linux/Unix: arp -n (numeric, faster)
+                output = subprocess.check_output(['arp', '-n'],
+                                               universal_newlines=True,
+                                               timeout=2)
+
+            # Parse ARP output
             for line in output.split('\n'):
                 if ip in line:
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if ip in part and i + 1 < len(parts):
-                            mac = parts[i + 1]
-                            if '-' in mac or ':' in mac:
-                                return mac.replace('-', ':')
+                    # Look for MAC address pattern (XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX)
+                    mac_pattern = r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})'
+                    match = re.search(mac_pattern, line)
+                    if match:
+                        mac_address = match.group(0)
+                        # Normalize to colon format and return
+                        return mac_address.replace('-', ':').upper()
+        except Exception as e:
+            pass
+
+        # Try method 2: ip neigh (Linux alternative)
+        if platform.system().lower() != 'windows':
+            try:
+                output = subprocess.check_output(['ip', 'neigh', 'show', ip],
+                                               universal_newlines=True,
+                                               timeout=2)
+                mac_pattern = r'([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})'
+                match = re.search(mac_pattern, output)
+                if match:
+                    return match.group(0).upper()
+            except:
+                pass
+
+        # Try method 3: arp -a <specific_ip> (targeted query)
+        try:
+            output = subprocess.check_output(['arp', '-a', ip],
+                                           universal_newlines=True,
+                                           timeout=2)
+            mac_pattern = r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})'
+            match = re.search(mac_pattern, output)
+            if match:
+                mac_address = match.group(0)
+                return mac_address.replace('-', ':').upper()
         except:
             pass
+
+        # Fallback: If ARP table doesn't have the entry, try pinging and retry
+        # This handles cases where scan_target is called without prior ping
+        if mac_address is None:
+            try:
+                param = '-n' if platform.system().lower() == 'windows' else '-c'
+                subprocess.run(['ping', param, '1', '-w', '1000', ip],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             timeout=2)
+                # Small delay to ensure ARP table is updated
+                time.sleep(0.3)
+
+                # Retry ARP lookup after ping
+                if platform.system().lower() == 'windows':
+                    output = subprocess.check_output(['arp', '-a'],
+                                                   universal_newlines=True,
+                                                   timeout=2)
+                else:
+                    output = subprocess.check_output(['arp', '-n'],
+                                                   universal_newlines=True,
+                                                   timeout=2)
+
+                for line in output.split('\n'):
+                    if ip in line:
+                        mac_pattern = r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})'
+                        match = re.search(mac_pattern, line)
+                        if match:
+                            mac_address = match.group(0)
+                            return mac_address.replace('-', ':').upper()
+            except:
+                pass
+
         return "Unknown"
     
     def _scan_ports(self, ip: str, port_list: List[int] = None) -> List[Dict]:
