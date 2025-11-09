@@ -8,6 +8,7 @@ Shows evaluation results, confusion matrix, attack detection rates, and recommen
 
 import sys
 import json
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -17,9 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QTableWidget, QTableWidgetItem, QTextEdit, QPushButton,
-    QHeaderView, QTabWidget, QProgressBar, QComboBox, QMessageBox
+    QHeaderView, QTabWidget, QProgressBar, QComboBox, QMessageBox, QProgressDialog
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 
 # Try to import pandas for data loading
@@ -32,6 +33,58 @@ except ImportError:
     print("Warning: pandas not available")
 
 
+class TrainingThread(QThread):
+    """Background thread for model training"""
+
+    finished = pyqtSignal(bool, str)  # success, message
+    progress = pyqtSignal(str)  # progress message
+
+    def __init__(self, train_data_path, model_save_path):
+        super().__init__()
+        self.train_data_path = train_data_path
+        self.model_save_path = model_save_path
+
+    def run(self):
+        """Run the training script"""
+        try:
+            self.progress.emit("Starting model training...")
+
+            # Get the training script path
+            train_script = Path(__file__).parent.parent / "ml" / "train_unswnb15.py"
+
+            if not train_script.exists():
+                self.finished.emit(False, f"Training script not found: {train_script}")
+                return
+
+            # Check if training data exists
+            if not Path(self.train_data_path).exists():
+                self.finished.emit(False, f"Training data not found: {self.train_data_path}")
+                return
+
+            self.progress.emit("Running training script...")
+            self.progress.emit("This may take 5-10 minutes...")
+
+            # Run the training script as a subprocess
+            result = subprocess.run(
+                [sys.executable, str(train_script)],
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout
+            )
+
+            if result.returncode == 0:
+                self.progress.emit("Training completed successfully!")
+                self.finished.emit(True, "Model training completed successfully!")
+            else:
+                error_msg = result.stderr if result.stderr else result.stdout
+                self.finished.emit(False, f"Training failed:\n{error_msg}")
+
+        except subprocess.TimeoutExpired:
+            self.finished.emit(False, "Training timed out (>10 minutes)")
+        except Exception as e:
+            self.finished.emit(False, f"Training error: {str(e)}")
+
+
 class MLPerformanceWidget(QWidget):
     """
     Widget to display ML model performance metrics and evaluation results.
@@ -41,7 +94,10 @@ class MLPerformanceWidget(QWidget):
         super().__init__(parent)
 
         self.model_path = "data/models/unsw_nb15_model"
+        self.train_data_path = "data/datasets/UNSW_NB15_training-set_processed.csv"
         self.test_results = None
+        self.training_thread = None
+        self.progress_dialog = None
 
         self.init_ui()
         self.load_model_metrics()
@@ -627,17 +683,116 @@ class MLPerformanceWidget(QWidget):
     def retrain_model(self):
         """Trigger model retraining"""
 
-        reply = QMessageBox.question(self, "Retrain Model",
-                                     "This will retrain the ML model on UNSW-NB15 data.\n\n"
-                                     "Training may take 5-10 minutes.\n\n"
-                                     "Continue?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        # Check if training data exists
+        if not Path(self.train_data_path).exists():
+            QMessageBox.warning(
+                self,
+                "Training Data Not Found",
+                f"Training data not found at:\n{self.train_data_path}\n\n"
+                "Please download the UNSW-NB15 dataset first.\n\n"
+                "You can manually train by running:\n"
+                "python src/ml/train_unswnb15.py"
+            )
+            return
 
-        if reply == QMessageBox.StandardButton.Yes:
-            QMessageBox.information(self, "Retraining",
-                                  "To retrain the model, run:\n\n"
-                                  "python src/ml/train_unswnb15.py\n\n"
-                                  "After training completes, click 'Refresh Metrics' to update the dashboard.")
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Retrain Model",
+            "This will retrain the ML model on UNSW-NB15 data.\n\n"
+            "⏱️  Training may take 5-10 minutes.\n"
+            "📊 Dataset: ~170K samples\n"
+            "🔧 Model: Hybrid LSTM + Isolation Forest\n\n"
+            "The application will remain responsive during training.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # Start training in background thread
+        self.start_training()
+
+    def start_training(self):
+        """Start the training process in a background thread"""
+
+        # Create progress dialog
+        self.progress_dialog = QProgressDialog(
+            "Initializing model training...",
+            "Cancel",
+            0,
+            0,  # Indeterminate progress
+            self
+        )
+        self.progress_dialog.setWindowTitle("Training ML Model")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setValue(0)
+        self.progress_dialog.canceled.connect(self.cancel_training)
+
+        # Create and start training thread
+        self.training_thread = TrainingThread(self.train_data_path, self.model_path)
+        self.training_thread.progress.connect(self.on_training_progress)
+        self.training_thread.finished.connect(self.on_training_finished)
+        self.training_thread.start()
+
+    def on_training_progress(self, message):
+        """Update progress dialog with training status"""
+        if self.progress_dialog:
+            self.progress_dialog.setLabelText(f"🔄 {message}")
+
+    def on_training_finished(self, success, message):
+        """Handle training completion"""
+
+        # Close progress dialog
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+
+        # Clean up thread
+        if self.training_thread:
+            self.training_thread.wait()
+            self.training_thread = None
+
+        # Show result
+        if success:
+            QMessageBox.information(
+                self,
+                "Training Successful",
+                "✅ Model training completed successfully!\n\n"
+                "The new model has been saved and is ready to use.\n\n"
+                "Click 'Refresh Metrics' to view the updated performance."
+            )
+            # Auto-refresh metrics
+            self.load_model_metrics()
+        else:
+            QMessageBox.critical(
+                self,
+                "Training Failed",
+                f"❌ Model training failed:\n\n{message}\n\n"
+                "You can try:\n"
+                "1. Check that training data exists\n"
+                "2. Ensure sufficient memory (>4GB recommended)\n"
+                "3. Run manually: python src/ml/train_unswnb15.py"
+            )
+
+    def cancel_training(self):
+        """Cancel the training process"""
+        if self.training_thread and self.training_thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Cancel Training",
+                "Are you sure you want to cancel model training?\n\n"
+                "Progress will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                self.training_thread.terminate()
+                self.training_thread.wait()
+                self.training_thread = None
+                QMessageBox.information(self, "Cancelled", "Model training cancelled.")
 
 
 # Test standalone
