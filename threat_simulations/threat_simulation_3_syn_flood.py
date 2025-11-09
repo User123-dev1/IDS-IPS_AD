@@ -23,7 +23,7 @@ except ImportError:
     sys.exit(1)
 
 # Configuration
-TARGET_IP = "192.168.12.144"  # ⚠️ CHANGE THIS to your IDS/IPS monitored system
+TARGET_IP = "192.168.1.50"  # ⚠️ CHANGE THIS to your IDS/IPS monitored system
 TARGET_PORT = 80  # Target service port
 PACKET_COUNT = 1000  # Number of SYN packets to send
 PACKETS_PER_BATCH = 10  # Send in batches

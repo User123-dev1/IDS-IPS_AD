@@ -176,6 +176,94 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 # Right-click PowerShell → "Run as Administrator"
 ```
 
+### ❌ "No Detection" When Running SYN Flood on Same Machine
+
+**IMPORTANT:** When you run the SYN flood simulation from the SAME machine as the IDS/IPS, Windows may NOT capture the packets properly due to internal routing optimizations.
+
+**Why This Happens:**
+- Windows optimizes traffic sent from your IP to itself (e.g., 192.168.12.144 → 192.168.12.144)
+- These packets bypass the normal network stack and don't appear on the network interface
+- Packet capture tools (Npcap/WinPcap) can't intercept internally-routed traffic
+- The IDS/IPS literally never "sees" the packets, so it can't detect them
+
+**SOLUTION: Run from a Different Machine**
+```
+Machine A (192.168.12.144): Run IDS/IPS - Start monitoring
+Machine B (192.168.12.100): Run attack simulation - target 192.168.12.144
+```
+
+**Alternative: Use Localhost (Limited Testing)**
+```python
+# Edit threat_simulation_3_syn_flood.py, line 26:
+TARGET_IP = "127.0.0.1"
+```
+Note: Detection may still be limited on Windows due to loopback routing.
+
+**Updated Detection (v2):**
+The IDS/IPS now includes OUTGOING SYN flood detection, which can detect attacks
+originating from the local machine IF the packets are captured. However, due to
+Windows packet capture limitations, this may not work for same-machine targets.
+
+### ❌ "MAC Address to reach destination not found" Error
+
+This error occurs in **threat_simulation_3_syn_flood.py** when Scapy cannot find the target IP on the network.
+
+**Root Cause:**
+- The target IP (default: 192.168.1.50) is not reachable from your machine
+- Scapy needs to resolve the IP to a MAC address via ARP
+- If the IP doesn't exist or is on a different network segment, the error occurs
+
+**SOLUTIONS:**
+
+**Option 1: Use Localhost (Easiest)**
+```python
+# Edit threat_simulation_3_syn_flood.py, line 26:
+TARGET_IP = "127.0.0.1"  # Attack your own machine
+```
+Then run the IDS/IPS on the same machine and monitor localhost traffic.
+
+**Option 2: Use a Reachable IP**
+```bash
+# First, find a reachable IP on your network
+ping 192.168.1.10  # Test connectivity
+
+# If ping works, edit the script:
+TARGET_IP = "192.168.1.10"  # IP that responded to ping
+```
+
+**Option 3: Run on Same Network Segment**
+- Ensure both attacker and target PCs are on the same subnet (e.g., 192.168.1.x)
+- Check with: `ipconfig` (Windows) or `ip addr` (Linux)
+- Both should have IPs like 192.168.1.x with same subnet mask
+
+**Option 4: Specify Network Interface**
+```python
+# Edit threat_simulation_3_syn_flood.py, line 33:
+INTERFACE = "eth0"  # Linux
+INTERFACE = "Wi-Fi"  # Windows
+INTERFACE = "en0"   # macOS
+```
+
+**Verify Before Running:**
+The updated script now includes automatic diagnostics! Run it and check:
+```bash
+sudo python threat_simulation_3_syn_flood.py
+
+# You'll see:
+# - Available network interfaces
+# - Route to target
+# - Connectivity test (ping)
+# - Clear error messages if issues detected
+```
+
+**Quick Test:**
+```bash
+# Test with localhost (always works):
+sudo python threat_simulation_3_syn_flood.py
+# When prompted, check that TARGET_IP is 127.0.0.1
+# This will work even without network access
+```
+
 ---
 
 ## Safety Notes

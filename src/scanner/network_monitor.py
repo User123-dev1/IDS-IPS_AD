@@ -260,6 +260,9 @@ class NetworkMonitor:
 
     def _update_statistics(self):
         """Update time-series statistics for dashboard"""
+        last_log_time = datetime.now()
+        last_packet_count = 0
+
         while self.is_monitoring:
             try:
                 # Get current packet count
@@ -271,6 +274,15 @@ class NetworkMonitor:
                     'packets': stats['packets_captured'],
                     'dropped': stats['packets_dropped']
                 })
+
+                # Log capture statistics every 30 seconds for debugging
+                current_time = datetime.now()
+                if (current_time - last_log_time).total_seconds() >= 30:
+                    packets_delta = stats['packets_captured'] - last_packet_count
+                    logger.info(f"📊 Packet Capture Stats: {stats['packets_captured']} total "
+                               f"({packets_delta} in last 30s), {stats['packets_dropped']} dropped")
+                    last_log_time = current_time
+                    last_packet_count = stats['packets_captured']
 
                 # Protocol snapshot
                 self.protocol_history.append({
@@ -407,6 +419,44 @@ class NetworkMonitor:
 
     def _detect_attack_patterns(self, packet: PacketInfo):
         """Detect common attack patterns (IPS functionality)"""
+
+        # SPECIAL CASE: Detect OUTGOING SYN flood attacks (when local machine is the attacker)
+        # This handles simulations run from the same machine
+        if packet.src_ip == self.local_ip and packet.protocol == 'TCP':
+            # Track OUTGOING SYN packets for SYN flood detection
+            if not hasattr(self, '_outgoing_syn_tracker'):
+                self._outgoing_syn_tracker = {'count': 0, 'last_reset': datetime.now()}
+
+            outgoing_tracker = self._outgoing_syn_tracker
+
+            # Reset counter every minute
+            if (datetime.now() - outgoing_tracker['last_reset']).total_seconds() > 60:
+                outgoing_tracker['count'] = 0
+                outgoing_tracker['last_reset'] = datetime.now()
+
+            # Count SYN packets (flags would be 'S' for SYN)
+            # Note: PacketInfo doesn't include TCP flags, so we count all outgoing TCP
+            outgoing_tracker['count'] += 1
+
+            # Detect SYN flood from local machine (>500 packets/min)
+            if outgoing_tracker['count'] > 500:
+                if self._should_create_alert(self.local_ip, 'OUTGOING_SYN_FLOOD', interval_seconds=60):
+                    anomaly = Anomaly(
+                        timestamp=datetime.now(),
+                        severity='CRITICAL',
+                        category='DOS_ATTACK',
+                        description=f"🚨 ATTACK DETECTED: SYN flood attack ORIGINATING from this machine",
+                        source_ip=self.local_ip,
+                        details={
+                            'packet_rate': outgoing_tracker['count'],
+                            'attack_type': 'SYN Flood DoS Attack (Outgoing)',
+                            'action': 'WARNING - This machine is generating attack traffic!',
+                            'note': 'This may be a legitimate simulation or malware C2 activity'
+                        }
+                    )
+                    self.anomalies.append(anomaly)
+                    logger.critical(f"🚨 IPS ALERT: Outgoing SYN flood detected from {self.local_ip} - "
+                                   f"{outgoing_tracker['count']} packets/min")
 
         # CRITICAL: Only track INCOMING packets to the local host
         # This prevents false positives from outgoing response packets
