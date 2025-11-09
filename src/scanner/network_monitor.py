@@ -342,6 +342,37 @@ class NetworkMonitor:
                 )
                 self.anomalies.append(anomaly)
 
+    def _should_create_alert(self, source_ip: str, category: str, interval_seconds: int = 60) -> bool:
+        """
+        Check if an alert should be created (de-duplication)
+
+        Args:
+            source_ip: Source IP address
+            category: Alert category (PORT_SCAN, BRUTE_FORCE, etc.)
+            interval_seconds: Minimum seconds between duplicate alerts
+
+        Returns:
+            True if alert should be created, False if duplicate within interval
+        """
+        if not hasattr(self, '_alert_tracker'):
+            self._alert_tracker = {}
+
+        alert_key = (source_ip, category)
+        now = datetime.now()
+
+        # Check if we've alerted for this before
+        if alert_key in self._alert_tracker:
+            last_alert_time = self._alert_tracker[alert_key]
+            elapsed = (now - last_alert_time).total_seconds()
+
+            if elapsed < interval_seconds:
+                # Too soon - suppress duplicate alert
+                return False
+
+        # Create alert and update tracker
+        self._alert_tracker[alert_key] = now
+        return True
+
     def _detect_attack_patterns(self, packet: PacketInfo):
         """Detect common attack patterns (IPS functionality)"""
 
@@ -361,20 +392,22 @@ class NetworkMonitor:
 
         # 1. Port Scanning Detection (high rate of connections to different ports)
         if tracker['count'] > 100:  # More than 100 packets per minute from single source
-            anomaly = Anomaly(
-                timestamp=datetime.now(),
-                severity='CRITICAL',
-                category='PORT_SCAN',
-                description=f"🚨 ATTACK DETECTED: Potential port scanning from {src_ip}",
-                source_ip=src_ip,
-                details={
-                    'packet_rate': tracker['count'],
-                    'attack_type': 'Port Scan / Network Reconnaissance',
-                    'action': 'BLOCK recommended - Add firewall rule to block this IP'
-                }
-            )
-            self.anomalies.append(anomaly)
-            logger.critical(f"🚨 IPS ALERT: Port scanning detected from {src_ip}")
+            # De-duplicate: Only alert once per minute per source IP
+            if self._should_create_alert(src_ip, 'PORT_SCAN', interval_seconds=60):
+                anomaly = Anomaly(
+                    timestamp=datetime.now(),
+                    severity='CRITICAL',
+                    category='PORT_SCAN',
+                    description=f"🚨 ATTACK DETECTED: Potential port scanning from {src_ip}",
+                    source_ip=src_ip,
+                    details={
+                        'packet_rate': tracker['count'],
+                        'attack_type': 'Port Scan / Network Reconnaissance',
+                        'action': 'BLOCK recommended - Add firewall rule to block this IP'
+                    }
+                )
+                self.anomalies.append(anomaly)
+                logger.critical(f"🚨 IPS ALERT: Port scanning detected from {src_ip}")
 
         # 2. Brute Force Attack Detection (multiple attempts to authentication ports)
         auth_ports = {22, 23, 3389, 5900, 21, 445}  # SSH, Telnet, RDP, VNC, FTP, SMB
@@ -390,83 +423,137 @@ class NetworkMonitor:
             auth_tracker['count'] += 1
 
             if auth_tracker['count'] > 20:  # More than 20 auth attempts per minute
-                anomaly = Anomaly(
-                    timestamp=datetime.now(),
-                    severity='CRITICAL',
-                    category='BRUTE_FORCE',
-                    description=f"🚨 ATTACK DETECTED: Brute force attack from {src_ip} targeting port {packet.dst_port}",
-                    source_ip=src_ip,
-                    details={
-                        'target_port': packet.dst_port,
-                        'target_ip': packet.dst_ip,
-                        'attempt_count': auth_tracker['count'],
-                        'attack_type': 'Credential Brute Force',
-                        'action': 'BLOCK IMMEDIATELY - Attackingin progress'
-                    }
-                )
-                self.anomalies.append(anomaly)
-                logger.critical(f"🚨 IPS ALERT: Brute force attack detected from {src_ip} on port {packet.dst_port}")
+                # De-duplicate: Only alert once per minute per source IP
+                if self._should_create_alert(src_ip, 'BRUTE_FORCE', interval_seconds=60):
+                    anomaly = Anomaly(
+                        timestamp=datetime.now(),
+                        severity='CRITICAL',
+                        category='BRUTE_FORCE',
+                        description=f"🚨 ATTACK DETECTED: Brute force attack from {src_ip} targeting port {packet.dst_port}",
+                        source_ip=src_ip,
+                        details={
+                            'target_port': packet.dst_port,
+                            'target_ip': packet.dst_ip,
+                            'attempt_count': auth_tracker['count'],
+                            'attack_type': 'Credential Brute Force',
+                            'action': 'BLOCK IMMEDIATELY - Attack in progress'
+                        }
+                    )
+                    self.anomalies.append(anomaly)
+                    logger.critical(f"🚨 IPS ALERT: Brute force attack detected from {src_ip} on port {packet.dst_port}")
 
         # 3. OT/ICS Protocol Attack Detection
         ot_attack_ports = {502, 102, 44818, 2222, 20000, 4840}  # Modbus, S7, EIP, DNP3, OPC-UA
         if packet.dst_port in ot_attack_ports:
-            anomaly = Anomaly(
-                timestamp=datetime.now(),
-                severity='CRITICAL',
-                category='OT_ATTACK',
-                description=f"🚨 CRITICAL: OT/ICS protocol access from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
-                source_ip=src_ip,
-                details={
-                    'target_port': packet.dst_port,
-                    'target_device': packet.dst_ip,
-                    'protocol': 'OT/ICS',
-                    'attack_type': 'Industrial Control System Intrusion',
-                    'action': 'INVESTIGATE IMMEDIATELY - Potential sabotage attempt'
-                }
-            )
-            self.anomalies.append(anomaly)
-            logger.critical(f"🚨 IPS ALERT: OT protocol access from {src_ip} to critical port {packet.dst_port}")
+            # De-duplicate: Only alert once per minute per source IP
+            if self._should_create_alert(src_ip, 'OT_ATTACK', interval_seconds=60):
+                anomaly = Anomaly(
+                    timestamp=datetime.now(),
+                    severity='CRITICAL',
+                    category='OT_ATTACK',
+                    description=f"🚨 CRITICAL: OT/ICS protocol access from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
+                    source_ip=src_ip,
+                    details={
+                        'target_port': packet.dst_port,
+                        'target_device': packet.dst_ip,
+                        'protocol': 'OT/ICS',
+                        'attack_type': 'Industrial Control System Intrusion',
+                        'action': 'INVESTIGATE IMMEDIATELY - Potential sabotage attempt'
+                    }
+                )
+                self.anomalies.append(anomaly)
+                logger.critical(f"🚨 IPS ALERT: OT protocol access from {src_ip} to critical port {packet.dst_port}")
 
         # 4. DoS/DDoS Detection (extremely high packet rate)
         if tracker['count'] > 500:  # More than 500 packets per minute
-            anomaly = Anomaly(
-                timestamp=datetime.now(),
-                severity='CRITICAL',
-                category='DOS_ATTACK',
-                description=f"🚨 ATTACK DETECTED: Potential DoS/DDoS attack from {src_ip}",
-                source_ip=src_ip,
-                details={
-                    'packet_rate': tracker['count'],
-                    'attack_type': 'Denial of Service (DoS)',
-                    'action': 'BLOCK IMMEDIATELY - Network flooding detected'
-                }
-            )
-            self.anomalies.append(anomaly)
-            logger.critical(f"🚨 IPS ALERT: DoS attack detected from {src_ip}")
+            # De-duplicate: Only alert once per minute per source IP
+            if self._should_create_alert(src_ip, 'DOS_ATTACK', interval_seconds=60):
+                anomaly = Anomaly(
+                    timestamp=datetime.now(),
+                    severity='CRITICAL',
+                    category='DOS_ATTACK',
+                    description=f"🚨 ATTACK DETECTED: Potential DoS/DDoS attack from {src_ip}",
+                    source_ip=src_ip,
+                    details={
+                        'packet_rate': tracker['count'],
+                        'attack_type': 'Denial of Service (DoS)',
+                        'action': 'BLOCK IMMEDIATELY - Network flooding detected'
+                    }
+                )
+                self.anomalies.append(anomaly)
+                logger.critical(f"🚨 IPS ALERT: DoS attack detected from {src_ip}")
 
         # 5. Malware C2 Communication Detection (unusual external connections)
         if not hasattr(self, '_known_external_ips'):
             self._known_external_ips = set()
 
-        # Check if destination is external (simplified check)
-        if not packet.dst_ip.startswith('192.168.') and not packet.dst_ip.startswith('10.') and not packet.dst_ip.startswith('172.'):
+        # Check if destination is external AND not multicast/broadcast
+        if self._is_external_ip(packet.dst_ip):
             if packet.dst_ip not in self._known_external_ips:
                 self._known_external_ips.add(packet.dst_ip)
-                anomaly = Anomaly(
-                    timestamp=datetime.now(),
-                    severity='HIGH',
-                    category='EXTERNAL_CONNECTION',
-                    description=f"⚠️ Suspicious external connection from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
-                    source_ip=src_ip,
-                    details={
-                        'external_ip': packet.dst_ip,
-                        'port': packet.dst_port,
-                        'attack_type': 'Possible Malware C2 Communication',
-                        'action': 'Investigate source device for malware'
-                    }
-                )
-                self.anomalies.append(anomaly)
-                logger.warning(f"⚠️ IPS ALERT: External connection from {src_ip} to {packet.dst_ip}")
+                # De-duplicate: Only alert once per external IP
+                if self._should_create_alert(src_ip, f'EXTERNAL_{packet.dst_ip}', interval_seconds=300):
+                    anomaly = Anomaly(
+                        timestamp=datetime.now(),
+                        severity='HIGH',
+                        category='EXTERNAL_CONNECTION',
+                        description=f"⚠️ Suspicious external connection from {src_ip} to {packet.dst_ip}:{packet.dst_port}",
+                        source_ip=src_ip,
+                        details={
+                            'external_ip': packet.dst_ip,
+                            'port': packet.dst_port,
+                            'attack_type': 'Possible Malware C2 Communication',
+                            'action': 'Investigate source device for malware'
+                        }
+                    )
+                    self.anomalies.append(anomaly)
+                    logger.warning(f"⚠️ IPS ALERT: External connection from {src_ip} to {packet.dst_ip}")
+
+    def _is_external_ip(self, ip: str) -> bool:
+        """
+        Check if IP is external (not private/multicast/broadcast)
+
+        Returns:
+            True if IP is external and should be alerted on
+            False if IP is private, multicast, broadcast, or link-local
+        """
+        try:
+            # Private IP ranges (RFC 1918)
+            if ip.startswith('10.'):
+                return False
+            if ip.startswith('192.168.'):
+                return False
+            if ip.startswith('172.'):
+                # Check 172.16.0.0 - 172.31.255.255
+                octets = ip.split('.')
+                if len(octets) >= 2:
+                    second = int(octets[1])
+                    if 16 <= second <= 31:
+                        return False
+
+            # Loopback
+            if ip.startswith('127.'):
+                return False
+
+            # Link-local
+            if ip.startswith('169.254.'):
+                return False
+
+            # Multicast (224.0.0.0 - 239.255.255.255)
+            first_octet = int(ip.split('.')[0])
+            if 224 <= first_octet <= 239:
+                return False
+
+            # Broadcast
+            if ip == '255.255.255.255':
+                return False
+
+            # If we get here, it's a public/external IP
+            return True
+
+        except (ValueError, IndexError):
+            # Invalid IP format
+            return False
 
     def _ml_detect_attacks(self, packet: PacketInfo):
         """Use improved ML model for flow-based attack detection"""
