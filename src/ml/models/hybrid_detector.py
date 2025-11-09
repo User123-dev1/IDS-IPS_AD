@@ -19,9 +19,16 @@ class HybridAnomalyDetector:
         self.sequence_length = sequence_length
         self.contamination = contamination
         self.scaler = StandardScaler()
+        # Optimized Isolation Forest parameters for better performance
         self.isolation_forest = IsolationForest(
-            contamination=contamination, n_estimators=100,
-            max_samples='auto', random_state=42, n_jobs=-1
+            contamination=contamination,
+            n_estimators=200,           # Increased from 100 for better accuracy
+            max_samples=256,            # Fixed sample size for consistency
+            max_features=1.0,           # Use all features
+            bootstrap=True,             # Bootstrap sampling for diversity
+            random_state=42,
+            n_jobs=-1,                  # Use all CPU cores
+            verbose=0
         )
         self.autoencoder = None
         self.reconstruction_threshold = None
@@ -30,19 +37,33 @@ class HybridAnomalyDetector:
         self.feature_dim = None
         
     def _build_lstm_autoencoder(self, input_dim):
+        """Build optimized LSTM autoencoder for anomaly detection"""
         if not TF_AVAILABLE:
             return None
+
+        # Encoder: Compress traffic patterns into latent representation
         encoder_inputs = keras.Input(shape=(self.sequence_length, input_dim))
-        encoded = layers.LSTM(64, activation='relu', return_sequences=True, dropout=0.2)(encoder_inputs)
-        encoded = layers.LSTM(32, activation='relu', return_sequences=False, dropout=0.2)(encoded)
+        encoded = layers.LSTM(128, activation='tanh', return_sequences=True, dropout=0.3)(encoder_inputs)
+        encoded = layers.LSTM(64, activation='tanh', return_sequences=True, dropout=0.3)(encoded)
+        encoded = layers.LSTM(32, activation='tanh', return_sequences=False, dropout=0.2)(encoded)
         encoded = layers.Dense(16, activation='relu')(encoded)
-        encoded = layers.Dropout(0.2)(encoded)
+        encoded = layers.BatchNormalization()(encoded)
+        encoded = layers.Dropout(0.3)(encoded)
+
+        # Decoder: Reconstruct original patterns
         decoded = layers.RepeatVector(self.sequence_length)(encoded)
-        decoded = layers.LSTM(32, activation='relu', return_sequences=True, dropout=0.2)(decoded)
-        decoded = layers.LSTM(64, activation='relu', return_sequences=True, dropout=0.2)(decoded)
+        decoded = layers.LSTM(32, activation='tanh', return_sequences=True, dropout=0.2)(decoded)
+        decoded = layers.LSTM(64, activation='tanh', return_sequences=True, dropout=0.3)(decoded)
+        decoded = layers.LSTM(128, activation='tanh', return_sequences=True, dropout=0.3)(decoded)
         decoded = layers.TimeDistributed(layers.Dense(input_dim))(decoded)
+
+        # Build and compile model
         autoencoder = keras.Model(encoder_inputs, decoded)
-        autoencoder.compile(optimizer=keras.optimizers.Adam(0.001), loss='mse')
+        autoencoder.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=0.001),
+            loss='mse',
+            metrics=['mae']
+        )
         return autoencoder
     
     def train(self, normal_traffic_features, epochs=50, batch_size=32):
@@ -63,19 +84,41 @@ class HybridAnomalyDetector:
             X_seq = self._create_sequences(X_scaled)
             if self.autoencoder is None:
                 self.autoencoder = self._build_lstm_autoencoder(self.feature_dim)
-            
+
+            # Enhanced callbacks for better training
+            callbacks = [
+                keras.callbacks.EarlyStopping(
+                    monitor='val_loss',
+                    patience=15,
+                    restore_best_weights=True,
+                    verbose=1
+                ),
+                keras.callbacks.ReduceLROnPlateau(
+                    monitor='val_loss',
+                    factor=0.5,
+                    patience=5,
+                    min_lr=0.00001,
+                    verbose=1
+                )
+            ]
+
             history = self.autoencoder.fit(
-                X_seq, X_seq, epochs=epochs, batch_size=batch_size,
-                validation_split=0.2, verbose=1,
-                callbacks=[keras.callbacks.EarlyStopping(
-                    monitor='val_loss', patience=10, restore_best_weights=True
-                )]
+                X_seq, X_seq,
+                epochs=epochs,
+                batch_size=batch_size,
+                validation_split=0.2,
+                verbose=1,
+                callbacks=callbacks,
+                shuffle=True
             )
-            
+
+            # Calculate reconstruction threshold
             reconstructions = self.autoencoder.predict(X_seq, verbose=0)
             errors = np.mean(np.abs(X_seq - reconstructions), axis=(1, 2))
             self.reconstruction_threshold = np.percentile(errors, 95)
             print(f"  [OK] Trained (threshold: {self.reconstruction_threshold:.6f})")
+            print(f"       Final loss: {history.history['loss'][-1]:.6f}")
+            print(f"       Final val_loss: {history.history['val_loss'][-1]:.6f}")
         
         self.is_trained = True
         print("\n" + "="*60)

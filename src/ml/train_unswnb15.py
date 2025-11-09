@@ -59,12 +59,18 @@ def train_on_unswnb15(train_data_path, model_save_path, epochs=30, sequence_leng
     print()
 
     # Calculate contamination (proportion of attacks)
-    # Note: IsolationForest requires contamination <= 0.5
+    # Note: IsolationForest contamination should be conservative to reduce false positives
+    # Setting it too high (like 0.5) causes excessive false alarms
     raw_contamination = np.mean(y_train == 1)
-    contamination = min(raw_contamination, 0.5)
+
+    # Cap contamination at 0.15 (15%) for better precision
+    # This is more conservative but significantly reduces false positive rate
+    # Trade-off: Higher precision, slightly lower recall
+    contamination = min(raw_contamination, 0.15)
 
     print(f"  Attack proportion in data: {raw_contamination:.3f} ({raw_contamination*100:.1f}%)")
-    print(f"  Using contamination: {contamination:.3f} (capped at 0.5 for IsolationForest)")
+    print(f"  Using contamination: {contamination:.3f} (conservative threshold for low FPR)")
+    print(f"  Note: Lower contamination = fewer false positives, more precise detection")
     print()
 
     # Initialize detector
@@ -167,8 +173,8 @@ def main():
     parser.add_argument(
         '--epochs',
         type=int,
-        default=30,
-        help='Number of training epochs (default: 30)'
+        default=50,
+        help='Number of training epochs for LSTM (default: 50, ignored if TensorFlow not available)'
     )
 
     parser.add_argument(
