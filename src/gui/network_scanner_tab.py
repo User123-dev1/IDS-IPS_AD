@@ -49,7 +49,7 @@ class ScanWorker(QThread):
         self.is_running = True
 
     def run(self):
-        """Execute network scan"""
+        """Execute network scan with parallel processing"""
         try:
             self.progress.emit(f"Initializing scanner...")
 
@@ -61,29 +61,60 @@ class ScanWorker(QThread):
             self.scanner = EnterpriseNetworkScanner(enable_ml=True)
             self.progress.emit(f"Scanner initialized with ML capabilities")
 
-            # Parse target (could be single IP or range)
+            # Parse target (could be single IP, range, or comma-separated subnets)
             targets = self._parse_targets(self.target)
             total = len(targets)
 
-            self.progress.emit(f"Scanning {total} target(s)...")
+            if total == 0:
+                self.error.emit("No valid targets found")
+                return
 
-            for idx, ip in enumerate(targets, 1):
-                if not self.is_running:
-                    self.progress.emit("Scan cancelled by user")
-                    break
+            self.progress.emit(f"Scanning {total} target(s) in parallel...")
 
-                self.progress.emit(f"[{idx}/{total}] Scanning {ip}...")
+            # Parallel scanning with ThreadPoolExecutor
+            from concurrent.futures import ThreadPoolExecutor, as_completed
 
+            # Use 100 workers for fast parallel scanning (can handle hundreds of IPs simultaneously)
+            max_workers = min(100, total)
+            completed = 0
+
+            def scan_single_ip(ip):
+                """Scan a single IP and return result"""
                 try:
                     result = self.scanner.scan_target(ip)
                     if result:
                         result['scan_type'] = self.scan_type
                         result['timestamp'] = datetime.now().isoformat()
-                        self.result.emit(result)
+                    return result
                 except Exception as e:
                     self.error.emit(f"Error scanning {ip}: {str(e)}")
+                    return None
 
-            self.progress.emit(f"Scan complete. Scanned {total} target(s)")
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all scan tasks
+                future_to_ip = {executor.submit(scan_single_ip, ip): ip for ip in targets}
+
+                # Process results as they complete
+                for future in as_completed(future_to_ip):
+                    if not self.is_running:
+                        self.progress.emit("Scan cancelled by user")
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+
+                    ip = future_to_ip[future]
+                    completed += 1
+
+                    try:
+                        result = future.result()
+                        if result:
+                            self.result.emit(result)
+                            # Progress update every 10 IPs or for last IP
+                            if completed % 10 == 0 or completed == total:
+                                self.progress.emit(f"Progress: {completed}/{total} IPs scanned ({(completed/total)*100:.0f}%)")
+                    except Exception as e:
+                        self.error.emit(f"Error processing result for {ip}: {str(e)}")
+
+            self.progress.emit(f"Scan complete. Scanned {completed}/{total} target(s)")
 
         except Exception as e:
             self.error.emit(f"Scan error: {str(e)}")
@@ -91,37 +122,68 @@ class ScanWorker(QThread):
             self.finished.emit()
 
     def _parse_targets(self, target: str) -> List[str]:
-        """Parse target string into list of IPs"""
-        targets = []
+        """Parse target string into list of IPs
 
-        # Handle CIDR notation (e.g., 192.168.1.0/24)
-        if '/' in target:
-            import ipaddress
-            try:
-                network = ipaddress.ip_network(target, strict=False)
-                targets = [str(ip) for ip in network.hosts()]
-            except:
-                targets = [target.split('/')[0]]
+        Supports:
+        - Single IP: 192.168.1.1
+        - CIDR: 192.168.1.0/24
+        - Range: 192.168.1.1-10
+        - Multiple (comma-separated): 192.168.1.0/24, 10.10.100.0/24, 172.16.0.1
+        """
+        all_targets = []
 
-        # Handle range notation (e.g., 192.168.1.1-10)
-        elif '-' in target:
-            parts = target.rsplit('.', 1)
-            if len(parts) == 2 and '-' in parts[1]:
-                base = parts[0]
-                start, end = parts[1].split('-')
+        # Split by comma to handle multiple subnets/IPs
+        target_parts = [t.strip() for t in target.split(',')]
+
+        for target_part in target_parts:
+            if not target_part:
+                continue
+
+            targets = []
+
+            # Handle CIDR notation (e.g., 192.168.1.0/24)
+            if '/' in target_part:
+                import ipaddress
                 try:
-                    for i in range(int(start), int(end) + 1):
-                        targets.append(f"{base}.{i}")
-                except:
-                    targets = [target]
+                    network = ipaddress.ip_network(target_part, strict=False)
+                    targets = [str(ip) for ip in network.hosts()]
+                    self.progress.emit(f"Parsed {target_part}: {len(targets)} hosts")
+                except Exception as e:
+                    self.error.emit(f"Invalid CIDR notation '{target_part}': {e}")
+                    targets = [target_part.split('/')[0]]
+
+            # Handle range notation (e.g., 192.168.1.1-10)
+            elif '-' in target_part and '.' in target_part:
+                parts = target_part.rsplit('.', 1)
+                if len(parts) == 2 and '-' in parts[1]:
+                    base = parts[0]
+                    range_part = parts[1].split('-')
+                    if len(range_part) == 2:
+                        try:
+                            start = int(range_part[0])
+                            end = int(range_part[1])
+                            if 0 <= start <= 255 and 0 <= end <= 255 and start <= end:
+                                targets = [f"{base}.{i}" for i in range(start, end + 1)]
+                                self.progress.emit(f"Parsed {target_part}: {len(targets)} hosts")
+                            else:
+                                self.error.emit(f"Invalid range '{target_part}': values must be 0-255")
+                                targets = [target_part]
+                        except ValueError:
+                            self.error.emit(f"Invalid range format '{target_part}'")
+                            targets = [target_part]
+                    else:
+                        targets = [target_part]
+                else:
+                    targets = [target_part]
+
+            # Single IP
             else:
-                targets = [target]
+                targets = [target_part]
+                self.progress.emit(f"Parsed {target_part}: single host")
 
-        # Single IP
-        else:
-            targets = [target]
+            all_targets.extend(targets)
 
-        return targets
+        return all_targets
 
     def stop(self):
         """Stop the scan"""
@@ -177,7 +239,7 @@ class NetworkScannerTab(QWidget):
         target_label = QLabel("Target:")
         target_label.setMinimumWidth(100)
         self.target_input = QLineEdit()
-        self.target_input.setPlaceholderText("192.168.1.0/24 or 192.168.1.1-10 or 192.168.1.1")
+        self.target_input.setPlaceholderText("192.168.1.0/24 or 192.168.1.1-10 or multiple: 192.168.12.0/24, 10.10.100.0/24")
         self.target_input.setText("192.168.1.0/24")
         target_layout.addWidget(target_label)
         target_layout.addWidget(self.target_input)

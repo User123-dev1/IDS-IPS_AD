@@ -14,7 +14,7 @@ class EnterpriseNetworkScanner:
     """Enterprise-grade OT/ICS Network Scanner with ML Integration"""
 
     def __init__(self, enable_ml=True):
-        self.timeout = 2.0
+        self.timeout = 1.0  # Reduced from 2.0 to 1.0 for faster scanning
         self.enable_ml = enable_ml
         self.ml_classifier = None
         self.ml_detector = None
@@ -68,9 +68,15 @@ class EnterpriseNetworkScanner:
             self.ml_detector = None
             self.enable_ml = False
         
-    def scan_target(self, ip: str) -> Dict:
-        """Main scan method for a single target with ML integration"""
-        print(f"[*] Starting scan of {ip}...")
+    def scan_target(self, ip: str, verbose: bool = False) -> Dict:
+        """Main scan method for a single target with ML integration
+
+        Args:
+            ip: Target IP address
+            verbose: Enable verbose logging (default False for parallel scans)
+        """
+        if verbose:
+            print(f"[*] Starting scan of {ip}...")
 
         result = {
             'ip': ip,
@@ -101,24 +107,18 @@ class EnterpriseNetworkScanner:
         # Get vendor from MAC
         if result['mac_address'] != 'Unknown':
             result['vendor'] = self.get_vendor_from_mac(result['mac_address'])
-        else:
-            print(f"  [!] Warning: Could not determine MAC address for {ip}")
 
         # Scan ports
-        print(f"  [*] Scanning ports...")
         result['open_ports'] = self._scan_ports(ip)
 
         # Check for OT protocols
-        print(f"  [*] Checking OT/ICS protocols...")
         result['ot_protocols'] = self._check_ot_protocols(ip, result['open_ports'])
 
         # Check for vulnerabilities
-        print(f"  [*] Checking vulnerabilities...")
         result['vulnerabilities'] = self._check_vulnerabilities(result)
 
         # ML-powered analysis
         if self.enable_ml and self.ml_classifier:
-            print(f"  [*] Running ML analysis...")
             ml_analysis = self._perform_ml_analysis(result)
             result['ml_analysis'] = ml_analysis
         else:
@@ -147,10 +147,6 @@ class EnterpriseNetworkScanner:
             if self.ml_classifier:
                 classification = self.ml_classifier.classify_device(scan_result)
                 ml_result['risk_classification'] = classification
-
-                # Add summary
-                print(f"  [ML] Risk Level: {classification['risk_level'].upper()} " +
-                      f"(Score: {classification['risk_score']:.2f})")
 
             # 2. Device Profile Analysis
             ml_result['device_profile'] = self._analyze_device_profile(scan_result)
@@ -355,11 +351,11 @@ class EnterpriseNetworkScanner:
     def _is_alive(self, ip: str) -> bool:
         """Check if host is alive"""
         param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['ping', param, '1', '-w', '1000', ip]
-        
+        command = ['ping', param, '1', '-w', '500', ip]  # Reduced from 1000ms to 500ms
+
         try:
-            output = subprocess.run(command, stdout=subprocess.DEVNULL, 
-                                  stderr=subprocess.DEVNULL, timeout=2)
+            output = subprocess.run(command, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, timeout=1)  # Reduced from 2s to 1s
             return output.returncode == 0
         except:
             return False
@@ -387,12 +383,12 @@ class EnterpriseNetworkScanner:
                 # Windows: arp -a
                 output = subprocess.check_output(['arp', '-a'],
                                                universal_newlines=True,
-                                               timeout=2)
+                                               timeout=1)  # Reduced from 2s to 1s
             else:
                 # Linux/Unix: arp -n (numeric, faster)
                 output = subprocess.check_output(['arp', '-n'],
                                                universal_newlines=True,
-                                               timeout=2)
+                                               timeout=1)  # Reduced from 2s to 1s
 
             # Parse ARP output
             for line in output.split('\n'):
@@ -412,7 +408,7 @@ class EnterpriseNetworkScanner:
             try:
                 output = subprocess.check_output(['ip', 'neigh', 'show', ip],
                                                universal_newlines=True,
-                                               timeout=2)
+                                               timeout=1)  # Reduced from 2s to 1s
                 mac_pattern = r'([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})'
                 match = re.search(mac_pattern, output)
                 if match:
@@ -424,7 +420,7 @@ class EnterpriseNetworkScanner:
         try:
             output = subprocess.check_output(['arp', '-a', ip],
                                            universal_newlines=True,
-                                           timeout=2)
+                                           timeout=1)  # Reduced from 2s to 1s
             mac_pattern = r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})'
             match = re.search(mac_pattern, output)
             if match:
@@ -438,22 +434,22 @@ class EnterpriseNetworkScanner:
         if mac_address is None:
             try:
                 param = '-n' if platform.system().lower() == 'windows' else '-c'
-                subprocess.run(['ping', param, '1', '-w', '1000', ip],
+                subprocess.run(['ping', param, '1', '-w', '500', ip],  # Reduced from 1000ms to 500ms
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL,
-                             timeout=2)
+                             timeout=1)  # Reduced from 2s to 1s
                 # Small delay to ensure ARP table is updated
-                time.sleep(0.3)
+                time.sleep(0.2)  # Reduced from 0.3s to 0.2s
 
                 # Retry ARP lookup after ping
                 if platform.system().lower() == 'windows':
                     output = subprocess.check_output(['arp', '-a'],
                                                    universal_newlines=True,
-                                                   timeout=2)
+                                                   timeout=1)  # Reduced from 2s to 1s
                 else:
                     output = subprocess.check_output(['arp', '-n'],
                                                    universal_newlines=True,
-                                                   timeout=2)
+                                                   timeout=1)  # Reduced from 2s to 1s
 
                 for line in output.split('\n'):
                     if ip in line:
