@@ -325,47 +325,55 @@ class UNSWNB15Preprocessor:
 
         # === ENHANCED FEATURES FOR POOR-PERFORMING CATEGORIES ===
 
+        # Helper function to safely get column as Series
+        def get_col(col_name, default_val=0):
+            """Get column as Series, or return Series of default values if missing"""
+            if col_name in df.columns:
+                return df[col_name]
+            else:
+                return pd.Series(default_val, index=df.index)
+
         # DoS Detection Features (currently 34.9% -> target 70%+)
-        df['connection_rate'] = df.get('Spkts', 0) / (df.get('dur', 1) + 1e-10)
-        df['syn_ack_ratio'] = df.get('synack', 0) / (df.get('ackdat', 1) + 1e-10)
-        df['packet_loss_rate'] = (df.get('sloss', 0) + df.get('dloss', 0)) / (df.get('Spkts', 1) + df.get('Dpkts', 1) + 1e-10)
-        df['flood_indicator'] = (df.get('Spkts', 0) > 100).astype(int) * (df.get('dur', 1) < 1).astype(int)
+        df['connection_rate'] = get_col('Spkts', 0) / (get_col('dur', 1) + 1e-10)
+        df['syn_ack_ratio'] = get_col('synack', 0) / (get_col('ackdat', 1) + 1e-10)
+        df['packet_loss_rate'] = (get_col('sloss', 0) + get_col('dloss', 0)) / (get_col('Spkts', 1) + get_col('Dpkts', 1) + 1e-10)
+        df['flood_indicator'] = ((get_col('Spkts', 0) > 100).astype(int)) * ((get_col('dur', 1) < 1).astype(int))
 
         # Reconnaissance Detection Features (currently 29.4% -> target 70%+)
-        df['port_scanning_indicator'] = (df.get('ct_state_ttl', 0) > 5).astype(int)
-        df['service_scan_indicator'] = (df.get('ct_srv_src', 0) > 10).astype(int)
-        df['host_scan_indicator'] = (df.get('ct_dst_ltm', 0) > 20).astype(int)
-        df['vertical_scan'] = (df.get('ct_src_dport_ltm', 0) > 5).astype(int)  # Same IP, many ports
-        df['horizontal_scan'] = (df.get('ct_dst_sport_ltm', 0) > 5).astype(int)  # Many IPs, same port
+        df['port_scanning_indicator'] = (get_col('ct_state_ttl', 0) > 5).astype(int)
+        df['service_scan_indicator'] = (get_col('ct_srv_src', 0) > 10).astype(int)
+        df['host_scan_indicator'] = (get_col('ct_dst_ltm', 0) > 20).astype(int)
+        df['vertical_scan'] = (get_col('ct_src_dport_ltm', 0) > 5).astype(int)  # Same IP, many ports
+        df['horizontal_scan'] = (get_col('ct_dst_sport_ltm', 0) > 5).astype(int)  # Many IPs, same port
 
         # Backdoor Detection Features (currently 18.4% -> target 60%+)
-        df['unusual_port'] = ((df.get('dsport', 0) > 49152) | (df.get('dsport', 0) < 1024)).astype(int)
-        df['persistent_connection'] = (df.get('dur', 0) > 60).astype(int)  # Long-lived connection
-        df['beaconing_pattern'] = (df.get('Sintpkt', 0) > 0).astype(int) * (df.get('Sintpkt', 0) < 10).astype(int)  # Regular intervals
-        df['c2_port_indicator'] = ((df.get('dsport', 0) == 4444) | (df.get('dsport', 0) == 8080) | (df.get('dsport', 0) == 443)).astype(int)
+        df['unusual_port'] = ((get_col('dsport', 0) > 49152) | (get_col('dsport', 0) < 1024)).astype(int)
+        df['persistent_connection'] = (get_col('dur', 0) > 60).astype(int)  # Long-lived connection
+        df['beaconing_pattern'] = ((get_col('Sintpkt', 0) > 0).astype(int)) * ((get_col('Sintpkt', 0) < 10).astype(int))  # Regular intervals
+        df['c2_port_indicator'] = ((get_col('dsport', 0) == 4444) | (get_col('dsport', 0) == 8080) | (get_col('dsport', 0) == 443)).astype(int)
 
         # Shellcode Detection Features (currently 18.0% -> target 55%+)
-        df['small_payload_indicator'] = (df.get('res_bdy_len', 0) < 100).astype(int) * (df.get('res_bdy_len', 0) > 0).astype(int)
-        df['exploit_pattern'] = (df.get('tcprtt', 0) > 1).astype(int)  # High RTT may indicate exploitation
-        df['nop_sled_indicator'] = (df.get('smeansz', 0) > 400).astype(int) * (df.get('smeansz', 0) < 600).astype(int)
-        df['shellcode_port'] = ((df.get('dsport', 0) == 80) | (df.get('dsport', 0) == 443) | (df.get('dsport', 0) == 8080)).astype(int)
+        df['small_payload_indicator'] = ((get_col('res_bdy_len', 0) < 100).astype(int)) * ((get_col('res_bdy_len', 0) > 0).astype(int))
+        df['exploit_pattern'] = (get_col('tcprtt', 0) > 1).astype(int)  # High RTT may indicate exploitation
+        df['nop_sled_indicator'] = ((get_col('smeansz', 0) > 400).astype(int)) * ((get_col('smeansz', 0) < 600).astype(int))
+        df['shellcode_port'] = ((get_col('dsport', 0) == 80) | (get_col('dsport', 0) == 443) | (get_col('dsport', 0) == 8080)).astype(int)
 
         # Analysis Detection Features (currently 15.4% -> target 50%+)
-        df['analysis_pattern'] = (df.get('ct_flw_http_mthd', 0) > 0).astype(int)
-        df['fingerprinting'] = (df.get('is_sm_ips_ports', 0) == 1).astype(int)
-        df['protocol_analysis'] = (df.get('trans_depth', 0) > 1).astype(int)
+        df['analysis_pattern'] = (get_col('ct_flw_http_mthd', 0) > 0).astype(int)
+        df['fingerprinting'] = (get_col('is_sm_ips_ports', 0) == 1).astype(int)
+        df['protocol_analysis'] = (get_col('trans_depth', 0) > 1).astype(int)
 
         # General Improvement Features
-        df['byte_asymmetry'] = abs(df.get('sbytes', 0) - df.get('dbytes', 0)) / (df.get('sbytes', 1) + df.get('dbytes', 1) + 1e-10)
-        df['packet_asymmetry'] = abs(df.get('Spkts', 0) - df.get('Dpkts', 0)) / (df.get('Spkts', 1) + df.get('Dpkts', 1) + 1e-10)
-        df['jitter_ratio'] = df.get('Sjit', 0) / (df.get('Djit', 1) + 1e-10)
-        df['ttl_difference'] = abs(df.get('sttl', 0) - df.get('dttl', 0))
-        df['connection_state'] = df.get('ct_state_ttl', 0)
+        df['byte_asymmetry'] = abs(get_col('sbytes', 0) - get_col('dbytes', 0)) / (get_col('sbytes', 1) + get_col('dbytes', 1) + 1e-10)
+        df['packet_asymmetry'] = abs(get_col('Spkts', 0) - get_col('Dpkts', 0)) / (get_col('Spkts', 1) + get_col('Dpkts', 1) + 1e-10)
+        df['jitter_ratio'] = get_col('Sjit', 0) / (get_col('Djit', 1) + 1e-10)
+        df['ttl_difference'] = abs(get_col('sttl', 0) - get_col('dttl', 0))
+        df['connection_state'] = get_col('ct_state_ttl', 0)
 
         # Time-based features
-        df['time_to_live'] = df.get('sttl', 0)
-        df['session_duration'] = df.get('Ltime', 0) - df.get('Stime', 0)
-        df['packet_interarrival'] = (df.get('Sintpkt', 0) + df.get('Dintpkt', 0)) / 2
+        df['time_to_live'] = get_col('sttl', 0)
+        df['session_duration'] = get_col('Ltime', 0) - get_col('Stime', 0)
+        df['packet_interarrival'] = (get_col('Sintpkt', 0) + get_col('Dintpkt', 0)) / 2
 
         # Advanced ratios
         df['window_size_ratio'] = df.get('swin', 0) / (df.get('dwin', 1) + 1e-10)
