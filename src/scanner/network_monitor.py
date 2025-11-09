@@ -5,6 +5,7 @@ Passive monitoring of OT network traffic with anomaly detection
 import logging
 import threading
 import time
+import socket
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 from typing import Dict, List, Optional, Tuple
@@ -78,6 +79,10 @@ class NetworkMonitor:
         self.capture = SecurePacketCapture()
         self.is_monitoring = False
 
+        # Get local host IP for directional threat detection
+        self.local_ip = self._get_local_ip()
+        logger.info(f"Local host IP: {self.local_ip} (monitoring for incoming attacks)")
+
         # Device tracking
         self.devices: Dict[str, DeviceProfile] = {}
         self.device_lock = threading.Lock()
@@ -138,6 +143,33 @@ class NetworkMonitor:
         self.ml_results_cache = {}  # Cache ML results for correlation
 
         logger.info("NetworkMonitor initialized")
+
+    def _get_local_ip(self) -> str:
+        """
+        Get the local host IP address for directional threat detection
+
+        Returns:
+            str: Local IP address (e.g., "192.168.12.144")
+        """
+        try:
+            # Create a UDP socket to determine the local IP
+            # This doesn't actually send data, just determines which interface would be used
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0)
+            try:
+                # Connect to a public DNS server (doesn't actually send data)
+                s.connect(('8.8.8.8', 80))
+                local_ip = s.getsockname()[0]
+            finally:
+                s.close()
+            return local_ip
+        except Exception as e:
+            # Fallback to hostname resolution
+            try:
+                return socket.gethostbyname(socket.gethostname())
+            except:
+                logger.warning(f"Could not determine local IP: {e}")
+                return "127.0.0.1"  # Fallback to localhost
 
     def start_monitoring(self,
                          interface: Optional[str] = None,
@@ -375,6 +407,15 @@ class NetworkMonitor:
 
     def _detect_attack_patterns(self, packet: PacketInfo):
         """Detect common attack patterns (IPS functionality)"""
+
+        # CRITICAL: Only track INCOMING packets to the local host
+        # This prevents false positives from outgoing response packets
+        # Example: When .193 scans .144 (local host):
+        #   - .193 sends 100 SYN packets TO .144 → TRACK (incoming attack)
+        #   - .144 sends 100 RST packets FROM .144 → IGNORE (outgoing responses)
+        if packet.dst_ip != self.local_ip:
+            # Packet is not destined to this host, ignore for attack detection
+            return
 
         # Track packet rates per source IP for rate-based attacks
         if not hasattr(self, '_packet_rate_tracker'):
